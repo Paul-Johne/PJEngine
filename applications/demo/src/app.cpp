@@ -5,6 +5,7 @@ using namespace std;
 VkInstance vulkanInstance;
 
 int main() {
+	/*
 	VkApplicationInfo appInfo;
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO; // for driver
 	appInfo.pNext = NULL; // for Vulkan extensions
@@ -25,6 +26,7 @@ int main() {
 	instanceInfo.ppEnabledExtensionNames = NULL;
 
 	vkCreateInstance(&instanceInfo, NULL, &vulkanInstance); // result for errorhandling
+	*/
 
 	cout << "Success" << endl;
 	return 0;
