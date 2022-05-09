@@ -29,13 +29,13 @@ set(DEMO_LIB_SOURCES
 add_library(demo_lib ${DEMO_LIB_SOURCES})
 
 # enables <*.h> instead of using "*.h"
-target_include_directories(demo_lib PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_include_directories(demo_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 # find Vulkan and GLFW for ImGui
 find_package(Vulkan REQUIRED)
 find_package(glfw3 REQUIRED)
 
-target_link_libraries(demo_lib PRIVATE
+target_link_libraries(demo_lib PUBLIC
     Vulkan::Vulkan
     glfw
 )
