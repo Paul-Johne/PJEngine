@@ -1,12 +1,14 @@
 ﻿#include <app.h>
 
-using namespace std;
+namespace PJEngine {
+	VkInstance vulkanInstance;
+	VkSurfaceKHR surface;
+	VkDevice logicalDevice;
+	VkResult result;
+	GLFWwindow* window;
+}
 
-VkInstance vulkanInstance;
-VkSurfaceKHR surface;
-VkDevice logicalDevice;
-VkResult result;
-GLFWwindow *window;
+using namespace std;
 
 void printPhysicalDeviceStats(VkPhysicalDevice *device) {
 	VkPhysicalDeviceProperties properties;
@@ -56,16 +58,25 @@ void printPhysicalDeviceStats(VkPhysicalDevice *device) {
 	// delete[] familyProperties;
 }
 
-void startGlfw3() {
+int startGlfw3(const char *windowName) {
 	glfwInit();
+
+	if (glfwVulkanSupported() == GLFW_FALSE) {
+		cout << "Error at glfwVulkanSupported" << endl;
+		return -1;
+	}
+
+	/* Settings for upcoming window creation */
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-	window = glfwCreateWindow(400, 350, "NICE", nullptr, nullptr);
+	PJEngine::window = glfwCreateWindow(1280, 720, windowName, nullptr, nullptr);
+
+	return 0;
 }
 
 void stopGlfw3() {
-	glfwDestroyWindow(window);
+	glfwDestroyWindow(PJEngine::window);
 	glfwTerminate();
 }
 
@@ -111,15 +122,22 @@ int startVulkan() {
 		cout << "\tExtension:\t" << availableExtensions[i].extensionName << endl;
 	}
 
+	/* gets all EXTENSIONS GLFW needs on current OS */
+	uint32_t numberOfRequiredGlfwExtensions = 0;
+	auto glfwExtensions = glfwGetRequiredInstanceExtensions(&numberOfRequiredGlfwExtensions);
+
+	cout << "numberOfGlfwExtensions:\t" << numberOfRequiredGlfwExtensions << endl;
+
 	// TODO ( does this layer always exist? )
-	const vector<const char*> usedInstanceLayers{
+	const vector<const char*> usedInstanceLayers {
 		"VK_LAYER_KHRONOS_validation",
 	};
-	// TODO ( does this layer always exist? )
-	const vector<const char*> usedInstanceExtensions{
+
+	/* TODO ( does this layer always exist? )
+	const vector<const char*> usedInstanceExtensions {
 		"VK_KHR_surface",
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME
-	};
+	};*/
 
 	/* instanceInfo used for the actual Vulkan instance */
 	VkInstanceCreateInfo instanceInfo;
@@ -129,26 +147,39 @@ int startVulkan() {
 	instanceInfo.pApplicationInfo = &appInfo;
 	instanceInfo.enabledLayerCount = usedInstanceLayers.size();
 	instanceInfo.ppEnabledLayerNames = usedInstanceLayers.data();
-	instanceInfo.enabledExtensionCount = usedInstanceExtensions.size();
-	instanceInfo.ppEnabledExtensionNames = usedInstanceExtensions.data();
+	instanceInfo.enabledExtensionCount = numberOfRequiredGlfwExtensions;
+	instanceInfo.ppEnabledExtensionNames = glfwExtensions;
 
 	/* returns an enum for errorhandling ( e.g. VK_ERROR_OUT_OF DEVICE_MEMORY ) */
-	result = vkCreateInstance(&instanceInfo, nullptr, &vulkanInstance);
-	if (result != VK_SUCCESS)
-		return -1;
-
+	PJEngine::result = vkCreateInstance(&instanceInfo, nullptr, &PJEngine::vulkanInstance);
+	if (PJEngine::result != VK_SUCCESS) {
+		cout << "Error at vkCreateInstance" << endl;
+		return PJEngine::result;
+	}
+		
 	/* VkSurfaceKHR */
+	PJEngine::result = glfwCreateWindowSurface(PJEngine::vulkanInstance, PJEngine::window, nullptr, &PJEngine::surface);
+	if (PJEngine::result != VK_SUCCESS) {
+		cout << "Error at glfwCreateWindowSurface" << endl;
+		return PJEngine::result;
+	}
+
+	/*
 	VkWin32SurfaceCreateInfoKHR win32SurfaceInfo;
 	win32SurfaceInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;	// TODO ( DISPLAY instead of WIN32 )
 	win32SurfaceInfo.pNext = nullptr;
 	win32SurfaceInfo.flags = 0;
 	win32SurfaceInfo.hinstance = nullptr;
 	win32SurfaceInfo.hwnd = nullptr;
+	*/
 
-	/* crossplatform surface */
-	result = vkCreateWin32SurfaceKHR(vulkanInstance, &win32SurfaceInfo, nullptr, &surface);
-	if (result != VK_SUCCESS)
-		return -2;
+	/* crossplatform surface
+	PJEngine::result = vkCreateWin32SurfaceKHR(PJEngine::vulkanInstance, &win32SurfaceInfo, nullptr, &PJEngine::surface);
+	if (PJEngine::result != VK_SUCCESS) {
+		cout << "Error at vkCreateWin32SurfaceKHR" << endl;
+		return PJEngine::result;
+	}
+	*/
 
 	/* Vulkan differs between PHYSICAL and logical GPU reference */
 	/* A physical reference is necessary for a logical reference */
@@ -156,14 +187,14 @@ int startVulkan() {
 
 	/*	vkEnumeratePhysicalDevices has two functionalities (depending on 3rd parameter):
 		1) get number of GPUs and stores value in 2nd parameter */
-	vkEnumeratePhysicalDevices(vulkanInstance, &numberOfPhysicalDevices, nullptr);
+	vkEnumeratePhysicalDevices(PJEngine::vulkanInstance, &numberOfPhysicalDevices, nullptr);
 
 	// OLD:		VkPhysicalDevice *physicalDevices = new VkPhysicalDevice[numberOfPhysicalDevices];
 	auto physicalDevices = vector<VkPhysicalDevice>(numberOfPhysicalDevices);
 
 	/*	vkEnumeratePhysicalDevices has two functionalities:
 		2) get reference for a number of GPUs and store them in an array of physical devices */
-	vkEnumeratePhysicalDevices(vulkanInstance, &numberOfPhysicalDevices, physicalDevices.data());
+	vkEnumeratePhysicalDevices(PJEngine::vulkanInstance, &numberOfPhysicalDevices, physicalDevices.data());
 
 	cout << "Number of GPUs:\t\t" << numberOfPhysicalDevices << endl;
 
@@ -198,16 +229,18 @@ int startVulkan() {
 	deviceInfo.pEnabledFeatures = &usedFeatures;
 
 	/* LOGICAL GPU reference */
-	result = vkCreateDevice(physicalDevices[0], &deviceInfo, nullptr, &logicalDevice);	// TODO ( choose GPU dynamically )
-	if (result != VK_SUCCESS)
-		return -3;
+	PJEngine::result = vkCreateDevice(physicalDevices[0], &deviceInfo, nullptr, &PJEngine::logicalDevice);	// TODO ( choose GPU dynamically )
+	if (PJEngine::result != VK_SUCCESS) {
+		cout << "Error at vkCreateDevice" << endl;
+		return PJEngine::result;
+	}
 
 	/* EXAMPLE: Getting Queue of some logical device to set tasks */
 	VkQueue queueOne;
-	vkGetDeviceQueue(logicalDevice, 0, 0, &queueOne);
+	vkGetDeviceQueue(PJEngine::logicalDevice, 0, 0, &queueOne);
 
 	/* Waiting for Vulkan API to finish all its tasks */
-	vkDeviceWaitIdle(logicalDevice);
+	vkDeviceWaitIdle(PJEngine::logicalDevice);
 
 	/* using vector instead of new, so variable is on stack and will be automatically deleted in C++ */
 	//delete[] layers;
@@ -219,27 +252,34 @@ int startVulkan() {
 
 void stopVulkan() {
 	/* CLEANUP */
-	vkDestroyDevice(logicalDevice, nullptr);
-	vkDestroySurfaceKHR(vulkanInstance, surface, nullptr);
-	vkDestroyInstance(vulkanInstance, nullptr);
+	vkDestroyDevice(PJEngine::logicalDevice, nullptr);
+	vkDestroySurfaceKHR(PJEngine::vulkanInstance, PJEngine::surface, nullptr);
+	vkDestroyInstance(PJEngine::vulkanInstance, nullptr);
 }
 
-void loopGame() {
+void loopVisualizationOf(GLFWwindow *window) {
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 	}
 }
 
 int main() {
-	startGlfw3();
+	int res;
 
-	if (startVulkan() != 0)
-		return -1;
+	res = startGlfw3("Procedural Generation with Vulkan");
+	if (res != 0) {
+		return res;
+	}
 
-	loopGame();
+	res = startVulkan();
+	if (res != 0) {
+		stopGlfw3();
+		return res;
+	}
+
+	loopVisualizationOf(PJEngine::window);
 
 	stopVulkan();
-
 	stopGlfw3();
 
 	return 0;
