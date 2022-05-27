@@ -1,12 +1,21 @@
 ﻿#include <app.h>
 
 namespace PJEngine {
+	VkResult result;
+
 	VkInstance vulkanInstance;
 	VkSurfaceKHR surface;
 	VkDevice logicalDevice;
-	VkResult result;
+
+	VkSwapchainKHR swapchain;
+	VkImageView* imageViews;
+
 	GLFWwindow* window;
+	const uint32_t WINDOW_WIDTH = 1280;
+	const uint32_t WINDOW_HEIGHT = 720;
 }
+
+uint32_t numberOfImagesInSwapchain = 0;
 
 using namespace std;
 
@@ -31,18 +40,16 @@ void printPhysicalDeviceStats(VkPhysicalDevice *device) {
 	VkPhysicalDeviceMemoryProperties memoryProperties;
 	vkGetPhysicalDeviceMemoryProperties(*device, &memoryProperties);
 	cout << "\t\t\t\tMemory Properties:" << endl;
-	cout << "\t\t\t\t\tHeaps:\t" << memoryProperties.memoryHeaps << endl;
+	cout << "\t\t\t\t\tHeaps:\t" << memoryProperties.memoryHeaps->size << endl;
 
 	/* GPUs have queues to solve tasks ; their respective attributes are clustered in families */
 	uint32_t numberOfQueueFamilies = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties(*device, &numberOfQueueFamilies, nullptr);
 
-	// OLD:		VkQueueFamilyProperties *familyProperties = new VkQueueFamilyProperties[numberOfQueueFamilies];
 	auto familyProperties = vector<VkQueueFamilyProperties>(numberOfQueueFamilies);
 	vkGetPhysicalDeviceQueueFamilyProperties(*device, &numberOfQueueFamilies, familyProperties.data());
-
+	
 	cout << "\t\t\t\tNumber of Queue Families:\t" << numberOfQueueFamilies << endl;
-
 	for (int i = 0; i < numberOfQueueFamilies; i++) {
 		cout << "\t\t\t\tQueue Family #" << i << endl;
 		cout << "\t\t\t\t\tQueues in Family:\t\t" << familyProperties[i].queueCount << endl;
@@ -53,9 +60,36 @@ void printPhysicalDeviceStats(VkPhysicalDevice *device) {
 		cout << "\t\t\t\t\tVK_QUEUE_SPARSE_BINDING_BIT\t" << ((familyProperties[i].queueFlags & VK_QUEUE_SPARSE_BINDING_BIT) != 0) << endl;
 	}
 
-	/* CLEANUP */
-	/* using vector instead of new, so variable is on stack and will be automatically deleted in C++ */
-	// delete[] familyProperties;
+	/* SurfaceCapabilities => checks access to triple buffering etc. */
+	VkSurfaceCapabilitiesKHR surfaceCapabilities;
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(*device, PJEngine::surface, &surfaceCapabilities);
+	cout << "\t\t\t\tSurface Capabilities:" << endl;
+	cout << "\t\t\t\t\tminImageCount:\t\t" << surfaceCapabilities.minImageCount << endl;
+	cout << "\t\t\t\t\tmaxImageCount:\t\t" << surfaceCapabilities.maxImageCount << endl;
+	cout << "\t\t\t\t\tcurrentExtent:\t\t" \
+		 << surfaceCapabilities.currentExtent.width << "x" << surfaceCapabilities.currentExtent.height << endl;
+
+	/* SurfaceFormats => defines how colors are stored */
+	uint32_t numberOfFormats = 0;
+	vkGetPhysicalDeviceSurfaceFormatsKHR(*device, PJEngine::surface, &numberOfFormats, nullptr);
+	auto surfaceFormats = vector<VkSurfaceFormatKHR>(numberOfFormats);
+	vkGetPhysicalDeviceSurfaceFormatsKHR(*device, PJEngine::surface, &numberOfFormats, surfaceFormats.data());
+
+	cout << "\t\t\t\tVkFormats: " << endl;
+	for (int i = 0; i < numberOfFormats; i++) {
+		cout << "\t\t\t\t\tIndex:\t\t" << surfaceFormats[i].format << endl;
+	}
+
+	/* PresentationMode => how can CPU and GPU interact */
+	uint32_t numberOfPresentationModes = 0;
+	vkGetPhysicalDeviceSurfacePresentModesKHR(*device, PJEngine::surface, &numberOfPresentationModes, nullptr);
+	auto presentModes = vector<VkPresentModeKHR>(numberOfPresentationModes);
+	vkGetPhysicalDeviceSurfacePresentModesKHR(*device, PJEngine::surface, &numberOfPresentationModes, presentModes.data());
+
+	cout << "\t\t\t\tPresentation Modes:" << endl;
+	for (int i = 0; i < numberOfPresentationModes; i++) {
+		cout << "\t\t\t\t\tIndex:\t\t" << presentModes[i] << endl;
+	}
 }
 
 int startGlfw3(const char *windowName) {
@@ -70,7 +104,7 @@ int startGlfw3(const char *windowName) {
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-	PJEngine::window = glfwCreateWindow(1280, 720, windowName, nullptr, nullptr);
+	PJEngine::window = glfwCreateWindow(PJEngine::WINDOW_WIDTH, PJEngine::WINDOW_HEIGHT, windowName, nullptr, nullptr);
 
 	return 0;
 }
@@ -157,7 +191,7 @@ int startVulkan() {
 		return PJEngine::result;
 	}
 		
-	/* VkSurfaceKHR */
+	/* VkSurfaceKHR => creates surface based on an existing GLFW Window */
 	PJEngine::result = glfwCreateWindowSurface(PJEngine::vulkanInstance, PJEngine::window, nullptr, &PJEngine::surface);
 	if (PJEngine::result != VK_SUCCESS) {
 		cout << "Error at glfwCreateWindowSurface" << endl;
@@ -209,10 +243,15 @@ int startVulkan() {
 	deviceQueueInfo.pNext = nullptr;
 	deviceQueueInfo.flags = 0;
 	deviceQueueInfo.queueFamilyIndex = 0;										// TODO ( analyse available families before setting one )
-	deviceQueueInfo.queueCount = 2;												// TODO ( analyse available queues in family first )
-	deviceQueueInfo.pQueuePriorities = new float[] {1.0f, 1.0f};
+	deviceQueueInfo.queueCount = 1;												// TODO ( analyse available queues in family first )
+	deviceQueueInfo.pQueuePriorities = new float[] {1.0f};
 
 	VkPhysicalDeviceFeatures usedFeatures = {};									// all possible features set to false
+
+	/* EXTENSIONS on device level */
+	const vector<const char*> deviceExtensions{
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME
+	};
 
 	/* deviceInfo declares what resources will be claimed */
 	/* deviceInfo is necessary for a logical reference    */
@@ -224,12 +263,12 @@ int startVulkan() {
 	deviceInfo.pQueueCreateInfos = &deviceQueueInfo;
 	deviceInfo.enabledLayerCount = 0;
 	deviceInfo.ppEnabledLayerNames = nullptr;
-	deviceInfo.enabledExtensionCount = 0;
-	deviceInfo.ppEnabledExtensionNames = nullptr;
+	deviceInfo.enabledExtensionCount = deviceExtensions.size();
+	deviceInfo.ppEnabledExtensionNames = deviceExtensions.data();
 	deviceInfo.pEnabledFeatures = &usedFeatures;
 
-	/* LOGICAL GPU reference */
-	PJEngine::result = vkCreateDevice(physicalDevices[0], &deviceInfo, nullptr, &PJEngine::logicalDevice);	// TODO ( choose GPU dynamically )
+	/* LOGICAL GPU reference => ! choose the best GPU for your task ! */
+	PJEngine::result = vkCreateDevice(physicalDevices[0], &deviceInfo, nullptr, &PJEngine::logicalDevice);
 	if (PJEngine::result != VK_SUCCESS) {
 		cout << "Error at vkCreateDevice" << endl;
 		return PJEngine::result;
@@ -239,19 +278,102 @@ int startVulkan() {
 	VkQueue queueOne;
 	vkGetDeviceQueue(PJEngine::logicalDevice, 0, 0, &queueOne);
 
+	/* Checking whether Swapchains are usable or not on physical device */
+	VkBool32 surfaceSupportsSwapchain = false;
+	PJEngine::result = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevices[0], 0, PJEngine::surface, &surfaceSupportsSwapchain);
+	if (PJEngine::result != VK_SUCCESS) {
+		cout << "Error at vkGetPhysicalDeviceSurfaceSupportKHR" << endl;
+		return PJEngine::result;
+	}
+	if (!surfaceSupportsSwapchain) {
+		cout << "Surface not support for the choosen GPU!" << endl;
+		return surfaceSupportsSwapchain;
+	}
+
+	/* swapchainInfo for building a Swapchain */
+	VkSwapchainCreateInfoKHR swapchainInfo;
+	swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	swapchainInfo.pNext = nullptr;
+	swapchainInfo.flags = 0;
+	swapchainInfo.surface = PJEngine::surface;
+	swapchainInfo.minImageCount = 2;												// requires AT LEAST 2
+	swapchainInfo.imageFormat = VK_FORMAT_B8G8R8A8_UNORM;							// TODO ( choose dynamically )
+	swapchainInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;				// TODO ( choose dynamically )
+	swapchainInfo.imageExtent = VkExtent2D { PJEngine::WINDOW_WIDTH, PJEngine::WINDOW_HEIGHT };
+	swapchainInfo.imageArrayLayers = 1;
+	swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	swapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;						// image shared between multiple queues?
+	swapchainInfo.queueFamilyIndexCount = 0;
+	swapchainInfo.pQueueFamilyIndices = nullptr;
+	swapchainInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;				// no additional transformations
+	swapchainInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;				// no see through images
+	swapchainInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;							// TODO ( choose dynamically )
+	swapchainInfo.clipped = VK_TRUE;
+	swapchainInfo.oldSwapchain = VK_NULL_HANDLE;									// resizing image needs new swapchain
+
+	/* Setting Swapchain with swapchainInfo */
+	PJEngine::result = vkCreateSwapchainKHR(PJEngine::logicalDevice, &swapchainInfo, nullptr, &PJEngine::swapchain);
+	if (PJEngine::result != VK_SUCCESS) {
+		cout << "Error at vkCreateSwapchainKHR" << endl;
+		return PJEngine::result;
+	}
+
+	/* Images of Swapchain */
+	numberOfImagesInSwapchain = 0;
+	vkGetSwapchainImagesKHR(PJEngine::logicalDevice, PJEngine::swapchain, &numberOfImagesInSwapchain, nullptr);
+	auto swapchainImages = vector<VkImage>(numberOfImagesInSwapchain);
+
+	PJEngine::result = \
+		vkGetSwapchainImagesKHR(PJEngine::logicalDevice, PJEngine::swapchain, &numberOfImagesInSwapchain, swapchainImages.data());
+	if (PJEngine::result != VK_SUCCESS) {
+		cout << "Error at vkGetSwapchainImagesKHR" << endl;
+		return PJEngine::result;
+	}
+
+	/* ImageViewInfo for building ImageView ! TODO ! */
+	VkImageViewCreateInfo imageViewInfo;
+	imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	imageViewInfo.pNext = nullptr;
+	imageViewInfo.flags = 0;
+	imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	imageViewInfo.format = VK_FORMAT_B8G8R8A8_UNORM;								// TODO ( choose dynamically )
+	imageViewInfo.components = VkComponentMapping { // r,g,b,a stays as their identity 
+		VK_COMPONENT_SWIZZLE_IDENTITY 
+	};
+	imageViewInfo.subresourceRange = VkImageSubresourceRange{
+		VK_IMAGE_ASPECT_COLOR_BIT,	// aspectMask : describes what kind of data is stored in image
+		0,							// baseMipLevel
+		1,							// levelCount : describes how many MipMap levels exist
+		0,							// baseArrayLayer : for VR
+		1							// layerCount : for VR
+	};
+
+	/* ImageView gives access to images in swapchainImages */
+	PJEngine::imageViews = new VkImageView[numberOfImagesInSwapchain];
+	for (int i = 0; i < numberOfImagesInSwapchain; i++) {
+		imageViewInfo.image = swapchainImages[i];
+
+		PJEngine::result = vkCreateImageView(PJEngine::logicalDevice, &imageViewInfo, nullptr, &PJEngine::imageViews[i]);
+		if (PJEngine::result != VK_SUCCESS) {
+			cout << "Error at vkCreateImageView" << endl;
+			return PJEngine::result;
+		}
+	}
+
 	/* Waiting for Vulkan API to finish all its tasks */
 	vkDeviceWaitIdle(PJEngine::logicalDevice);
-
-	/* using vector instead of new, so variable is on stack and will be automatically deleted in C++ */
-	//delete[] layers;
-	//delete[] extensions;
-	//delete[] physicalDevices;
 
 	return 0;
 }
 
 void stopVulkan() {
-	/* CLEANUP */
+	/* CLEANUP => delete for all new initializations */
+	for (int i = 0; i < numberOfImagesInSwapchain; i++) {
+		vkDestroyImageView(PJEngine::logicalDevice, PJEngine::imageViews[i], nullptr);
+	}
+	delete[] PJEngine::imageViews;
+
+	vkDestroySwapchainKHR(PJEngine::logicalDevice, PJEngine::swapchain, nullptr);
 	vkDestroyDevice(PJEngine::logicalDevice, nullptr);
 	vkDestroySurfaceKHR(PJEngine::vulkanInstance, PJEngine::surface, nullptr);
 	vkDestroyInstance(PJEngine::vulkanInstance, nullptr);
