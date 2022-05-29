@@ -7,6 +7,11 @@ set(DEMO_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/app.cpp"
 )
 
+set(SHADER_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/basic.vert"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/basic.frag"
+)
+
 # generates .exe
 add_executable(demo ${DEMO_SOURCES})
 
@@ -28,4 +33,13 @@ target_link_libraries(demo PRIVATE
 
     # Internal Dependencies => ImGui will be included directly with demo_lib
     demo_lib
+)
+
+# include .cmake file with additional functionality
+include(compile_shader)
+
+compile_shaders(
+    demo_shaders
+    ${SHADER_SOURCES}
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders"
 )

@@ -67,8 +67,8 @@ function(compile_shaders target_name)
                 COMMAND spirv-opt "${output_path}" -o "${output_path}" ${compsh_OPTIMIZER_OPTIONS}
                 COMMAND ${CMAKE_COMMAND} -E echo "... done!"
                 DEPENDS "${source_path}"
-                VERBATIM            
-            )  
+                VERBATIM
+            )
         else()
             add_custom_command(
                 OUTPUT "${output_path}"
@@ -77,13 +77,13 @@ function(compile_shaders target_name)
                 COMMAND ${CMAKE_COMMAND} -E echo "... done!"
                 DEPENDS "${source_path}"
                 VERBATIM
-            )            
-        endif()  
+            )  
+        endif()
     endforeach()
     source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${shader_source_files})
     add_custom_target(
         ${target_name}
         DEPENDS ${spirv_output_files}
         SOURCES ${shader_source_files}
-    )    
+    )
 endfunction()
