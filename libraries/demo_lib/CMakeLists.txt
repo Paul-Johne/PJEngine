@@ -25,7 +25,7 @@ set(DEMO_LIB_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/imgui_impl_vulkan.cpp"
 )
 
-# generates .dll
+# generates .dll / .lib
 add_library(demo_lib ${DEMO_LIB_SOURCES})
 
 # enables <*.h> instead of using "*.h"

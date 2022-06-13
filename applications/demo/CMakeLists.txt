@@ -12,8 +12,15 @@ set(SHADER_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders/basic.frag"
 )
 
-# generates .exe
+# generates demo.exe
 add_executable(demo ${DEMO_SOURCES})
+
+set_property(
+    TARGET 
+        demo 
+    PROPERTY
+        CXX_STANDARD 11
+)
 
 # enables <*.h> instead of using "*.h"
 target_include_directories(demo PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -40,6 +47,12 @@ include(compile_shader)
 
 compile_shaders(
     demo_shaders
-    ${SHADER_SOURCES}
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/shaders"
+    SOURCES
+        ${SHADER_SOURCES}
+    OUTPUT_DIRECTORY
+        "${CMAKE_CURRENT_BINARY_DIR}/assets/shaders"
+    COMPILE_OPTIONS
+        "--target-env=vulkan1.0" "-O"
 )
+
+add_dependencies(demo demo_shaders)
