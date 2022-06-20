@@ -1,26 +1,30 @@
 ﻿#include <app.h>
 
 namespace PJEngine {
-	VkResult result;
+	VkResult	result;
 
-	VkInstance vulkanInstance;
-	VkSurfaceKHR surface;
-	VkDevice logicalDevice;
+	VkInstance		vulkanInstance;
+	VkSurfaceKHR	surface;
+	VkDevice		logicalDevice;
 
-	VkSwapchainKHR swapchain;
-	uint32_t numberOfImagesInSwapchain = 0;
-	VkImageView* imageViews;
+	VkSwapchainKHR	swapchain;
+	uint32_t		numberOfImagesInSwapchain = 0;
+	VkImageView*	imageViews;
 
-	GLFWwindow* window;
-	const uint32_t WINDOW_WIDTH = 1280;
-	const uint32_t WINDOW_HEIGHT = 720;
+	VkShaderModule	shaderModuleBasicVert;
+	VkShaderModule	shaderModuleBasicFrag;
+	std::vector<VkPipelineShaderStageCreateInfo>	shaderStageInfos;
+
+	GLFWwindow*		window;
+	const uint32_t	WINDOW_WIDTH = 1280;
+	const uint32_t	WINDOW_HEIGHT = 720;
 }
 
 using namespace std;
 
-void printPhysicalDeviceStats(VkPhysicalDevice *device) {
+void printPhysicalDeviceStats(VkPhysicalDevice &device) {
 	VkPhysicalDeviceProperties properties;
-	vkGetPhysicalDeviceProperties(*device, &properties);
+	vkGetPhysicalDeviceProperties(device, &properties);
 
 	uint32_t apiVersion = properties.apiVersion;
 
@@ -31,22 +35,22 @@ void printPhysicalDeviceStats(VkPhysicalDevice *device) {
 
 	/* FEATURES => what kind of shaders can be processed */
 	VkPhysicalDeviceFeatures features;
-	vkGetPhysicalDeviceFeatures(*device, &features);
+	vkGetPhysicalDeviceFeatures(device, &features);
 	cout << "\t\t\t\tFeatures:" << endl;
 	cout << "\t\t\t\t\tGeometry Shader:\t" << features.geometryShader << endl;
 
 	/* memoryProperties => heaps/memory with flags */
 	VkPhysicalDeviceMemoryProperties memoryProperties;
-	vkGetPhysicalDeviceMemoryProperties(*device, &memoryProperties);
+	vkGetPhysicalDeviceMemoryProperties(device, &memoryProperties);
 	cout << "\t\t\t\tMemory Properties:" << endl;
 	cout << "\t\t\t\t\tHeaps:\t" << memoryProperties.memoryHeaps->size << endl;
 
 	/* GPUs have queues to solve tasks ; their respective attributes are clustered in families */
 	uint32_t numberOfQueueFamilies = 0;
-	vkGetPhysicalDeviceQueueFamilyProperties(*device, &numberOfQueueFamilies, nullptr);
+	vkGetPhysicalDeviceQueueFamilyProperties(device, &numberOfQueueFamilies, nullptr);
 
 	auto familyProperties = vector<VkQueueFamilyProperties>(numberOfQueueFamilies);
-	vkGetPhysicalDeviceQueueFamilyProperties(*device, &numberOfQueueFamilies, familyProperties.data());
+	vkGetPhysicalDeviceQueueFamilyProperties(device, &numberOfQueueFamilies, familyProperties.data());
 	
 	/* displays attributes of each queue family and the amount of available queues */
 	cout << "\t\t\t\tNumber of Queue Families:\t" << numberOfQueueFamilies << endl;
@@ -62,7 +66,7 @@ void printPhysicalDeviceStats(VkPhysicalDevice *device) {
 
 	/* SurfaceCapabilities => checks access to triple buffering etc. */
 	VkSurfaceCapabilitiesKHR surfaceCapabilities;
-	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(*device, PJEngine::surface, &surfaceCapabilities);
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, PJEngine::surface, &surfaceCapabilities);
 	cout << "\t\t\t\tSurface Capabilities:" << endl;
 	cout << "\t\t\t\t\tminImageCount:\t\t" << surfaceCapabilities.minImageCount << endl;
 	cout << "\t\t\t\t\tmaxImageCount:\t\t" << surfaceCapabilities.maxImageCount << endl;
@@ -71,9 +75,9 @@ void printPhysicalDeviceStats(VkPhysicalDevice *device) {
 
 	/* SurfaceFormats => defines how colors are stored */
 	uint32_t numberOfFormats = 0;
-	vkGetPhysicalDeviceSurfaceFormatsKHR(*device, PJEngine::surface, &numberOfFormats, nullptr);
+	vkGetPhysicalDeviceSurfaceFormatsKHR(device, PJEngine::surface, &numberOfFormats, nullptr);
 	auto surfaceFormats = vector<VkSurfaceFormatKHR>(numberOfFormats);
-	vkGetPhysicalDeviceSurfaceFormatsKHR(*device, PJEngine::surface, &numberOfFormats, surfaceFormats.data());
+	vkGetPhysicalDeviceSurfaceFormatsKHR(device, PJEngine::surface, &numberOfFormats, surfaceFormats.data());
 
 	cout << "\t\t\t\tVkFormats: " << endl;
 	for (int i = 0; i < numberOfFormats; i++) {
@@ -82,9 +86,9 @@ void printPhysicalDeviceStats(VkPhysicalDevice *device) {
 
 	/* PresentationMode => how CPU and GPU may interact with swapchain images */
 	uint32_t numberOfPresentationModes = 0;
-	vkGetPhysicalDeviceSurfacePresentModesKHR(*device, PJEngine::surface, &numberOfPresentationModes, nullptr);
+	vkGetPhysicalDeviceSurfacePresentModesKHR(device, PJEngine::surface, &numberOfPresentationModes, nullptr);
 	auto presentModes = vector<VkPresentModeKHR>(numberOfPresentationModes);
-	vkGetPhysicalDeviceSurfacePresentModesKHR(*device, PJEngine::surface, &numberOfPresentationModes, presentModes.data());
+	vkGetPhysicalDeviceSurfacePresentModesKHR(device, PJEngine::surface, &numberOfPresentationModes, presentModes.data());
 
 	cout << "\t\t\t\tPresentation Modes:" << endl;
 	for (int i = 0; i < numberOfPresentationModes; i++) {
@@ -135,6 +139,41 @@ vector<char> readSpirvFile(const string &filename) {
 	} else {
 		throw runtime_error("Failed to read shaderfile into RAM!");
 	}
+}
+
+/* Transforming shader code of type vector<char> into VkShaderModule */
+void createShaderModule(const vector<char> &spvCode, VkShaderModule &shaderModule) {
+	VkShaderModuleCreateInfo shaderModuleInfo;
+	shaderModuleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	shaderModuleInfo.pNext = nullptr;
+	shaderModuleInfo.flags = 0;
+	shaderModuleInfo.codeSize = spvCode.size();
+	shaderModuleInfo.pCode = (uint32_t*)spvCode.data();	// spv instructions always have a size of 32 bits, so casting is possible
+
+	PJEngine::result = vkCreateShaderModule(PJEngine::logicalDevice, &shaderModuleInfo, nullptr, &shaderModule);
+	if (PJEngine::result != VK_SUCCESS) {
+		cout << "Error at vkCreateShaderModule" << endl;
+		throw runtime_error("Failed to create VkShaderModule");
+	}
+}
+
+/* Adds Element to PJEngine::shaderStageInfos */
+void addShaderModuleToShaderStages(VkShaderModule newModule, VkShaderStageFlagBits stageType, const char* shaderEntryPoint = "main") {
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfo;
+
+	shaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderStageCreateInfo.pNext = nullptr;
+	shaderStageCreateInfo.flags = 0;
+	shaderStageCreateInfo.stage = stageType;
+	shaderStageCreateInfo.module = newModule;
+	shaderStageCreateInfo.pName = shaderEntryPoint;			// entry point of the module
+	shaderStageCreateInfo.pSpecializationInfo = nullptr;	// declaring const variables helps Vulkan to optimise shader code
+
+	PJEngine::shaderStageInfos.push_back(shaderStageCreateInfo);
+}
+
+void clearShaderStages() {
+	PJEngine::shaderStageInfos.clear();
 }
 
 int startVulkan() {
@@ -234,7 +273,7 @@ int startVulkan() {
 
 	/* Shows some properties and features for each available GPU */
 	for (int i = 0; i < numberOfPhysicalDevices; i++) {
-		printPhysicalDeviceStats(&physicalDevices[i]);
+		printPhysicalDeviceStats(physicalDevices[i]);
 	}
 
 	/* deviceQueueCreateInfo used for deviceInfo */
@@ -360,10 +399,54 @@ int startVulkan() {
 		}
 	}
 
-	/* TEMP CODE */
+	/* Reading compiled shader code into RAM */
 	auto shaderBasicVert = readSpirvFile("assets/shaders/basic.vert.spv");
 	auto shaderBasicFrag = readSpirvFile("assets/shaders/basic.frag.spv");
 	cout << "\n[DEBUG] Basic Shader Sizes: " << shaderBasicVert.size() << " Vert | Frag " << shaderBasicFrag.size() << endl;
+
+	/* Transforming shader code of type vector<char> into VkShaderModule */
+	createShaderModule(shaderBasicVert, PJEngine::shaderModuleBasicVert);
+	createShaderModule(shaderBasicFrag, PJEngine::shaderModuleBasicFrag);
+
+	/* Ensures that PJEngine::shaderStageInfos are empty before filling with data */
+	if (!PJEngine::shaderStageInfos.empty())
+		clearShaderStages();
+
+	/* Wraping Shader Modules in a distinct CreateInfo for the Shaderpipeline and adding them to engine's stageInfos */
+	addShaderModuleToShaderStages(PJEngine::shaderModuleBasicVert, VK_SHADER_STAGE_VERTEX_BIT);
+	addShaderModuleToShaderStages(PJEngine::shaderModuleBasicFrag, VK_SHADER_STAGE_FRAGMENT_BIT);
+	cout << "\n[DEBUG] Stages in PJEngine::shaderStageInfos: " << PJEngine::shaderStageInfos.size() << endl;
+
+	/* Viewport for ???imageView??? */
+	VkViewport viewport;
+	viewport.x = 0.0f;	// upper left corner
+	viewport.y = 0.0f;	// upper left corner
+	viewport.width = PJEngine::WINDOW_WIDTH;
+	viewport.height = PJEngine::WINDOW_HEIGHT;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+	/* PIPELINE BUILDING */
+	/* Shader pipelines consist out of fixed functions and programmable functions (shaders) */
+
+	/* Usally sizes of vertices and their attributes are defined here
+	 * It has similar tasks to OpenGL's glBufferData(), glVertexAttribPointer() etc. */
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo;
+	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputInfo.pNext = nullptr;
+	vertexInputInfo.flags = 0;
+	vertexInputInfo.vertexBindingDescriptionCount = 0;		// number of pVertexBindingDescriptionS
+	vertexInputInfo.pVertexBindingDescriptions = nullptr;	// binding index for AttributeDescription | stride for sizeof(Vertex) | inputRate to decide between per vertex or per instance
+	vertexInputInfo.vertexAttributeDescriptionCount = 0;	// number of pVertexAttribute
+	vertexInputInfo.pVertexAttributeDescriptions = nullptr;	// location in shader code | binding is binding index of BindingDescription | format defines vertex datatype | offset defines start of the element
+
+	/* Fixed Function : Input Assembler */
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
+	inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyInfo.pNext = nullptr;
+	inputAssemblyInfo.flags = 0;
+	inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;	// how single vertices will be assembled
+	inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
 
 	/* Waiting for Vulkan API to finish all its tasks */
 	vkDeviceWaitIdle(PJEngine::logicalDevice);
@@ -378,6 +461,10 @@ void stopVulkan() {
 	}
 	delete[] PJEngine::imageViews;
 
+	vkDestroyShaderModule(PJEngine::logicalDevice, PJEngine::shaderModuleBasicVert, nullptr);
+	vkDestroyShaderModule(PJEngine::logicalDevice, PJEngine::shaderModuleBasicFrag, nullptr);
+	clearShaderStages();
+
 	vkDestroySwapchainKHR(PJEngine::logicalDevice, PJEngine::swapchain, nullptr);
 	vkDestroyDevice(PJEngine::logicalDevice, nullptr);
 	vkDestroySurfaceKHR(PJEngine::vulkanInstance, PJEngine::surface, nullptr);
@@ -391,7 +478,7 @@ void loopVisualizationOf(GLFWwindow *window) {
 }
 
 int main() {
-	cout << "C++-Version: " << __cplusplus << endl;
+	cout << "C++-Version: " << __cplusplus << endl;			// guess:	MSVC isn't working correctly with __cplusplus
 
 	int res;
 
