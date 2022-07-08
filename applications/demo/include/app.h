@@ -3,7 +3,7 @@
 
 /* enables (sets to 1) code in header files*/
 //#define GLFW_INCLUDE_VULKAN
-#define VK_USE_PLATFORM_WIN32_KHR
+#define VK_USE_PLATFORM_WIN32_KHR 1
 
 /* Including other needs */
 #include <iostream>
