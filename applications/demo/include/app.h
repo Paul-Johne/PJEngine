@@ -9,6 +9,8 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <array>
+#include <limits>
 
 #include <vulkan/vulkan.h>
 #include <GLFW/glfw3.h>

@@ -15,11 +15,12 @@ set(SHADER_SOURCES
 # generates demo.exe
 add_executable(demo ${DEMO_SOURCES})
 
+# changes Cpp for this target (unnecessary => top level already sets Cpp Version to 11)
 set_property(
     TARGET 
         demo 
     PROPERTY
-        CXX_STANDARD 11
+        CXX_STANDARD 17
 )
 
 # enables <*.h> instead of using "*.h"

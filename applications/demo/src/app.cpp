@@ -25,11 +25,12 @@ namespace PJEngine {
 	VkCommandPool		commandPool;
 	VkCommandBuffer*	commandBuffers;
 
-	const VkFormat outputFormat = VK_FORMAT_B8G8R8A8_UNORM;				// TODO (availability must be checked)
+	const VkFormat	outputFormat = VK_FORMAT_B8G8R8A8_UNORM;			// TODO (availability must be checked)
 	const VkClearValue clearValueDefault = { 0.0f, 0.0f, 0.0f, 1.0f };	// default 'background' for all rendered images
 
 	VkSemaphore semaphoreSwapchainImageReceived;
 	VkSemaphore semaphoreRenderingFinished;
+	VkFence		fenceRenderFinished;
 
 	GLFWwindow*		window;
 	const uint32_t	WINDOW_WIDTH = 1280;
@@ -237,11 +238,11 @@ int startVulkan() {
 	uint32_t numberOfRequiredGlfwExtensions = 0;
 	auto glfwExtensions = glfwGetRequiredInstanceExtensions(&numberOfRequiredGlfwExtensions);
 
-	cout << "numberOfGlfwExtensions:\t" << numberOfRequiredGlfwExtensions << endl;
+	cout << "numberOfGlfwExtensions:\t" << numberOfRequiredGlfwExtensions << "\n" << endl;
 
 	// TODO ( does this layer always exist? )
-	const vector<const char*> usedInstanceLayers {
-		"VK_LAYER_KHRONOS_validation",
+	vector<const char*> usedInstanceLayers {
+		"VK_LAYER_KHRONOS_validation"
 	};
 
 	/* instanceInfo used for the actual Vulkan instance */
@@ -302,7 +303,7 @@ int startVulkan() {
 	VkPhysicalDeviceFeatures usedFeatures = {};									// all possible features set to false
 
 	/* EXTENSIONS on device level */
-	const vector<const char*> deviceExtensions {
+	vector<const char*> deviceExtensions {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME											// enables Swapchains for real time rendering
 	};
 
@@ -749,6 +750,17 @@ int startVulkan() {
 		return PJEngine::result;
 	}
 
+	VkFenceCreateInfo fenceInfo;
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceInfo.pNext = nullptr;
+	fenceInfo.flags = VkFenceCreateFlagBits::VK_FENCE_CREATE_SIGNALED_BIT;
+
+	PJEngine::result = vkCreateFence(PJEngine::logicalDevice, &fenceInfo, nullptr, &PJEngine::fenceRenderFinished);
+	if (PJEngine::result != VK_SUCCESS) {
+		cout << "Error at vkCreateFence" << endl;
+		return PJEngine::result;
+	}
+
 	return 0;
 }
 
@@ -756,6 +768,7 @@ void stopVulkan() {
 	/* Waiting for Vulkan API to finish all its tasks */
 	vkDeviceWaitIdle(PJEngine::logicalDevice);
 
+	vkDestroyFence(PJEngine::logicalDevice, PJEngine::fenceRenderFinished, nullptr);
 	vkDestroySemaphore(PJEngine::logicalDevice, PJEngine::semaphoreSwapchainImageReceived, nullptr);
 	vkDestroySemaphore(PJEngine::logicalDevice, PJEngine::semaphoreRenderingFinished, nullptr);
 
@@ -791,17 +804,39 @@ void stopVulkan() {
  * 3) give back image to swapchain to present it
  */
 void drawFrameOnSurface() {
+	PJEngine::result = vkWaitForFences(
+		PJEngine::logicalDevice, 
+		1, 
+		&PJEngine::fenceRenderFinished, 
+		VK_TRUE, 
+		numeric_limits<uint64_t>::max()
+	);
+	if (PJEngine::result != VK_SUCCESS) {
+		cout << "Error at vkWaitForFences" << endl;
+		return;
+	}
+
+	PJEngine::result = vkResetFences(
+		PJEngine::logicalDevice, 
+		1, 
+		&PJEngine::fenceRenderFinished
+	);
+	if (PJEngine::result != VK_SUCCESS) {
+		cout << "Error at vkResetFences" << endl;
+		return;
+	}
+
 	uint32_t imageIndex;
 	vkAcquireNextImageKHR(
 		PJEngine::logicalDevice, 
 		PJEngine::swapchain, 
-		2000,										// timeout in ns before abort
+		numeric_limits<uint64_t>::max(),			// timeout in ns before abort
 		PJEngine::semaphoreSwapchainImageReceived,	// semaphore	=> only visible on GPU side
 		VK_NULL_HANDLE,								// fences		=> like semaphores ; usable inside of Cpp Code
 		&imageIndex
 	);
-
-	VkPipelineStageFlags waitStageMask[] {
+	
+	array<VkPipelineStageFlags, 1> waitStageMask {
 		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
 	};
 
@@ -810,18 +845,18 @@ void drawFrameOnSurface() {
 	submitInfo.pNext = nullptr;
 	submitInfo.waitSemaphoreCount = 1;
 	submitInfo.pWaitSemaphores = &PJEngine::semaphoreSwapchainImageReceived;
-	submitInfo.pWaitDstStageMask = waitStageMask;								// allows async rendering behavior 
+	submitInfo.pWaitDstStageMask = waitStageMask.data();										// allows async rendering behavior 
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &PJEngine::commandBuffers[imageIndex];
 	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &PJEngine::semaphoreRenderingFinished;		// which semaphores will be triggered
+	submitInfo.pSignalSemaphores = &PJEngine::semaphoreRenderingFinished;				// which semaphores will be triggered
 
-	/* Submitting commandBuffer to queue */
+	/* Submitting commandBuffer to queue => actual rendering */
 	PJEngine::result = vkQueueSubmit(
 		PJEngine::queueForPrototyping, 
 		1, 
 		&submitInfo, 
-		VK_NULL_HANDLE
+		PJEngine::fenceRenderFinished
 	);
 	if (PJEngine::result != VK_SUCCESS) {
 		cout << "Error at vkQueueSubmit" << endl;
@@ -832,7 +867,7 @@ void drawFrameOnSurface() {
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presentInfo.pNext = nullptr;
 	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &PJEngine::semaphoreRenderingFinished;
+	presentInfo.pWaitSemaphores = &PJEngine::semaphoreRenderingFinished;	// waiting for rendering to finish before presenting
 	presentInfo.swapchainCount = 1;
 	presentInfo.pSwapchains = &PJEngine::swapchain;
 	presentInfo.pImageIndices = &imageIndex;
@@ -848,7 +883,7 @@ void drawFrameOnSurface() {
 void loopVisualizationOf(GLFWwindow *window) {
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
-		drawFrameOnSurface();
+		drawFrameOnSurface();	// TODO (MEMORY LEAK)
 	}
 }
 
