@@ -25,12 +25,12 @@ namespace PJEngine {
 	VkCommandPool		commandPool;
 	VkCommandBuffer*	commandBuffers;
 
-	const VkFormat	outputFormat = VK_FORMAT_B8G8R8A8_UNORM;			// TODO (availability must be checked)
-	const VkClearValue clearValueDefault = { 0.0f, 0.0f, 0.0f, 1.0f };	// default 'background' for all rendered images
+	const VkFormat		outputFormat = VK_FORMAT_B8G8R8A8_UNORM;				// TODO (availability must be checked)
+	const VkClearValue	clearValueDefault = { 0.0f, 0.0f, 1.0f, 0.5f };			// DEFAULT BACKGROUND (RGB) for all rendered images
 
 	VkSemaphore semaphoreSwapchainImageReceived;
 	VkSemaphore semaphoreRenderingFinished;
-	VkFence		fenceRenderFinished;
+	VkFence		fenceRenderFinished;											// 2 States: signaled, unsignaled
 
 	GLFWwindow*		window;
 	const uint32_t	WINDOW_WIDTH = 1280;
@@ -39,7 +39,7 @@ namespace PJEngine {
 
 using namespace std;
 
-void printPhysicalDeviceStats(VkPhysicalDevice &device) {
+void printPhysicalDeviceStats(VkPhysicalDevice& device) {
 	VkPhysicalDeviceProperties properties;
 	vkGetPhysicalDeviceProperties(device, &properties);
 
@@ -114,7 +114,7 @@ void printPhysicalDeviceStats(VkPhysicalDevice &device) {
 	}
 }
 
-int startGlfw3(const char *windowName) {
+int startGlfw3(const char* windowName) {
 	glfwInit();
 
 	if (glfwVulkanSupported() == GLFW_FALSE) {
@@ -136,7 +136,7 @@ void stopGlfw3() {
 	glfwTerminate();
 }
 
-vector<char> readSpirvFile(const string &filename) {
+vector<char> readSpirvFile(const string& filename) {
 	// using ios:ate FLAG to retrieve fileSize ; _Prot default is set to 64
 	ifstream currentFile(filename, ios::binary | ios::ate);
 
@@ -160,13 +160,13 @@ vector<char> readSpirvFile(const string &filename) {
 }
 
 /* Transforming shader code of type vector<char> into VkShaderModule */
-void createShaderModule(const vector<char> &spvCode, VkShaderModule &shaderModule) {
+void createShaderModule(const vector<char>& spvCode, VkShaderModule& shaderModule) {
 	VkShaderModuleCreateInfo shaderModuleInfo;
 	shaderModuleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 	shaderModuleInfo.pNext = nullptr;
 	shaderModuleInfo.flags = 0;
 	shaderModuleInfo.codeSize = spvCode.size();
-	shaderModuleInfo.pCode = (uint32_t*)spvCode.data();	// spv instructions always have a size of 32 bits, so casting is possible
+	shaderModuleInfo.pCode = (uint32_t*) spvCode.data();	// spv instructions always have a size of 32 bits, so casting is possible
 
 	PJEngine::result = vkCreateShaderModule(PJEngine::logicalDevice, &shaderModuleInfo, nullptr, &shaderModule);
 	if (PJEngine::result != VK_SUCCESS) {
@@ -198,7 +198,7 @@ int startVulkan() {
 	/* appInfo used for instanceInfo */
 	VkApplicationInfo appInfo;
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;				// sType for driver
-	appInfo.pNext = nullptr;										// for Vulkan extensions
+	appInfo.pNext = nullptr;
 	appInfo.pApplicationName = "Procedural Generation with Vulkan";
 	appInfo.applicationVersion = VK_MAKE_VERSION(0, 0, 0);
 	appInfo.pEngineName = "PJ Engine";
@@ -215,9 +215,9 @@ int startVulkan() {
 	auto availableLayers = vector<VkLayerProperties>(numberOfLayers);
 	vkEnumerateInstanceLayerProperties(&numberOfLayers, availableLayers.data());
 
-	cout << "Number of Instance Layers:\t" << numberOfLayers << endl;
+	cout << "\n[GPU] Available Instance Layers:\t" << numberOfLayers << endl;
 	for (int i = 0; i < numberOfLayers; i++) {
-		cout << "\tLayer Name:\t" << availableLayers[i].layerName << endl;
+		cout << "\tLayer:\t" << availableLayers[i].layerName << endl;
 		cout << "\t\t\t" << availableLayers[i].description << endl;
 	}
 
@@ -229,16 +229,19 @@ int startVulkan() {
 	auto availableExtensions = vector<VkExtensionProperties>(numberOfExtensions);
 	vkEnumerateInstanceExtensionProperties(nullptr, &numberOfExtensions, availableExtensions.data());
 
-	cout << "Number of Instance Extensions:\t" << numberOfExtensions << endl;
+	cout << "\n[GPU] Available Instance Extensions:\t" << numberOfExtensions << endl;
 	for (int i = 0; i < numberOfExtensions; i++) {
 		cout << "\tExtension:\t" << availableExtensions[i].extensionName << endl;
 	}
 
-	/* gets all EXTENSIONS GLFW needs on current OS */
+	/* GET ALL GLFW INSTANCE EXTENSIONS for current OS */
 	uint32_t numberOfRequiredGlfwExtensions = 0;
-	auto glfwExtensions = glfwGetRequiredInstanceExtensions(&numberOfRequiredGlfwExtensions);
+	const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&numberOfRequiredGlfwExtensions);
 
-	cout << "numberOfGlfwExtensions:\t" << numberOfRequiredGlfwExtensions << "\n" << endl;
+	cout << "\n[GLFW] REQUIRED Instance Extensions:\t" << numberOfRequiredGlfwExtensions << endl;
+	for (int i = 0; i < numberOfRequiredGlfwExtensions; i++) {
+		cout << "\tExtension:\t" << glfwExtensions[i] << endl;
+	}
 
 	// TODO ( does this layer always exist? )
 	vector<const char*> usedInstanceLayers {
@@ -264,6 +267,7 @@ int startVulkan() {
 	}
 		
 	/* VkSurfaceKHR => creates surface based on an existing GLFW Window */
+	/*  */
 	PJEngine::result = glfwCreateWindowSurface(PJEngine::vulkanInstance, PJEngine::window, nullptr, &PJEngine::surface);
 	if (PJEngine::result != VK_SUCCESS) {
 		cout << "Error at glfwCreateWindowSurface" << endl;
@@ -284,12 +288,16 @@ int startVulkan() {
 		2) get reference for a number of GPUs and store them in an array of physical devices */
 	vkEnumeratePhysicalDevices(PJEngine::vulkanInstance, &numberOfPhysicalDevices, physicalDevices.data());
 
-	cout << "Number of GPUs:\t\t" << numberOfPhysicalDevices << endl;
+	cout << "\nNumber of GPUs:\t\t" << numberOfPhysicalDevices << endl;
 
 	/* Shows some properties and features for each available GPU */
 	for (int i = 0; i < numberOfPhysicalDevices; i++) {
 		printPhysicalDeviceStats(physicalDevices[i]);
 	}
+
+	array<float, 1> queuePriorities {
+		1.0f
+	};
 
 	/* deviceQueueCreateInfo used for deviceInfo */
 	VkDeviceQueueCreateInfo deviceQueueInfo;
@@ -298,12 +306,12 @@ int startVulkan() {
 	deviceQueueInfo.flags = 0;
 	deviceQueueInfo.queueFamilyIndex = 0;										// TODO ( analyse available families before setting one )
 	deviceQueueInfo.queueCount = 1;												// TODO ( analyse available queues in family first )
-	deviceQueueInfo.pQueuePriorities = new float[] {1.0f};
+	deviceQueueInfo.pQueuePriorities = queuePriorities.data();
 
 	VkPhysicalDeviceFeatures usedFeatures = {};									// all possible features set to false
 
 	/* EXTENSIONS on device level */
-	vector<const char*> deviceExtensions {
+	array<const char*, 1> deviceExtensions {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME											// enables Swapchains for real time rendering
 	};
 
@@ -328,7 +336,7 @@ int startVulkan() {
 		return PJEngine::result;
 	}
 
-	/* Getting Queue of some logical device to assign tasks later */
+	/* Getting Queue of some logical device to assign tasks (CommandBuffer) later */
 	vkGetDeviceQueue(PJEngine::logicalDevice, 0, 0, &PJEngine::queueForPrototyping);
 
 	/* Checking whether Swapchains are usable or not on physical device */
@@ -662,7 +670,7 @@ int startVulkan() {
 	VkCommandPoolCreateInfo commandPoolInfo;
 	commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	commandPoolInfo.pNext = nullptr;
-	commandPoolInfo.flags = 0;						// reset record of single frame buffer | set to buffer to transient for optimisation
+	commandPoolInfo.flags = 0;						// reset record of single frame buffer | set to buffer to 'transient' for optimisation
 	commandPoolInfo.queueFamilyIndex = 0;			// must be the same as in VkDeviceQueueCreateInfo of the logical device & Queue Family 'VK_QUEUE_GRAPHICS_BIT' must be 1
 
 	PJEngine::result = vkCreateCommandPool(PJEngine::logicalDevice, &commandPoolInfo, nullptr, &PJEngine::commandPool);
@@ -685,7 +693,7 @@ int startVulkan() {
 		return PJEngine::result;
 	}
 
-	/* CommandBuffer RECORDING => set command inside of the command buffer*/
+	/* CommandBuffer RECORDING => SET command inside of the command buffer */
 
 	// Begin Recording
 	VkCommandBufferBeginInfo commandBufferBeginInfo;
@@ -715,7 +723,6 @@ int startVulkan() {
 
 		renderPassBeginInfo.framebuffer = PJEngine::framebuffers[i];	// framebuffer that the current command buffer is associated with
 
-		// actual recording of commandBuffers BETWEEN vkCmdBeginRenderPass AND vkCmdEndRenderPass
 		vkCmdBeginRenderPass(PJEngine::commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		// BIND => decide for an pipeline and use it for graphical calculation
@@ -804,6 +811,7 @@ void stopVulkan() {
  * 3) give back image to swapchain to present it
  */
 void drawFrameOnSurface() {
+	/* CPU waits here for SIGNALED fence(s)*/
 	PJEngine::result = vkWaitForFences(
 		PJEngine::logicalDevice, 
 		1, 
@@ -816,6 +824,7 @@ void drawFrameOnSurface() {
 		return;
 	}
 
+	/* UNSIGNALS fence(s) */
 	PJEngine::result = vkResetFences(
 		PJEngine::logicalDevice, 
 		1, 
@@ -835,9 +844,9 @@ void drawFrameOnSurface() {
 		VK_NULL_HANDLE,								// fences		=> like semaphores ; usable inside of Cpp Code
 		&imageIndex
 	);
-	
+
 	array<VkPipelineStageFlags, 1> waitStageMask {
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT									// allows async rendering behavior
 	};
 
 	VkSubmitInfo submitInfo;
@@ -845,18 +854,19 @@ void drawFrameOnSurface() {
 	submitInfo.pNext = nullptr;
 	submitInfo.waitSemaphoreCount = 1;
 	submitInfo.pWaitSemaphores = &PJEngine::semaphoreSwapchainImageReceived;
-	submitInfo.pWaitDstStageMask = waitStageMask.data();										// allows async rendering behavior 
+	submitInfo.pWaitDstStageMask = waitStageMask.data();
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &PJEngine::commandBuffers[imageIndex];
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &PJEngine::semaphoreRenderingFinished;				// which semaphores will be triggered
 
-	/* Submitting commandBuffer to queue => actual rendering */
+	/* Submitting commandBuffer to queue => ACTUAL RENDERING */
+	/* Fence must be unsignaled to proceed and SIGNALS fence */
 	PJEngine::result = vkQueueSubmit(
 		PJEngine::queueForPrototyping, 
 		1, 
 		&submitInfo, 
-		PJEngine::fenceRenderFinished
+		PJEngine::fenceRenderFinished				// QUESTION => exactly 1 fence ???
 	);
 	if (PJEngine::result != VK_SUCCESS) {
 		cout << "Error at vkQueueSubmit" << endl;
@@ -880,10 +890,10 @@ void drawFrameOnSurface() {
 	}
 }
 
-void loopVisualizationOf(GLFWwindow *window) {
+void loopVisualizationOf(GLFWwindow* window) {
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
-		drawFrameOnSurface();	// TODO (MEMORY LEAK)
+		drawFrameOnSurface();
 	}
 }
 
