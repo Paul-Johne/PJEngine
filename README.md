@@ -1,4 +1,4 @@
-# Procedural-Generation-with-Vulkan
+# PJEngine (Learning how to use Vulkan)
 Praxisprojekt (*Beginn: SS2022*)
 
 ## Installation Guide - On Windows with Visual Studio
