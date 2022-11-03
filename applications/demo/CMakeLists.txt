@@ -4,7 +4,13 @@ project(demo)
 
 set(DEMO_SOURCES 
     "${CMAKE_CURRENT_SOURCE_DIR}/include/app.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/debugUtils.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/globalFuns.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/globalParams.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/vef.h"
+
     "${CMAKE_CURRENT_SOURCE_DIR}/src/app.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/globalFuns.cpp"
 )
 
 set(SHADER_SOURCES
@@ -15,7 +21,7 @@ set(SHADER_SOURCES
 # generates demo.exe
 add_executable(demo ${DEMO_SOURCES})
 
-# changes Cpp for this target (unnecessary => top level already sets Cpp Version to 11)
+# changes Cpp for this target (top level already sets Cpp Version to 11)
 set_property(
     TARGET 
         demo 

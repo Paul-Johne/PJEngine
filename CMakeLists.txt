@@ -1,6 +1,6 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.14)
 
-project(procedural_generation_with_vulkan)
+project(PJEngine)
 
 # sets cpp version
 set(CMAKE_CXX_STANDARD 11)
