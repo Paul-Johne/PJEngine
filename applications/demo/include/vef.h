@@ -5,5 +5,5 @@
 
 /* Vulkan Extension Functions => vef::someEXT(parameters) to use in code */
 namespace vef {
-	PFN_vkSetDebugUtilsObjectNameEXT vkSetDebugUtilsObjectNameEXT{nullptr};
+	inline PFN_vkSetDebugUtilsObjectNameEXT vkSetDebugUtilsObjectNameEXT{nullptr};
 }

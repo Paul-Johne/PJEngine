@@ -14,12 +14,5 @@
 	#include <vector>
 	#include <limits>
 
-	#include <vulkan/vulkan.h>
-	#include <GLFW/glfw3.h>
-	#include <glm/glm.hpp>
-	#include <imgui.h>
-
 	#include <globalParams.h>
 	#include <globalFuns.h>
-	#include <vef.h>
-	#include <debugUtils.h>

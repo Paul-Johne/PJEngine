@@ -47,7 +47,7 @@ VkResult pje::set_object_name(VkDevice device, T object, const char* name, const
 	}
 }
 
-void pje::debugPhysicalDeviceStats(VkPhysicalDevice& device) {
+inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& device) {
 	VkPhysicalDeviceProperties properties;
 	vkGetPhysicalDeviceProperties(device, &properties);
 
