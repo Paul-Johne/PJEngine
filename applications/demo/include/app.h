@@ -19,4 +19,7 @@
 	#include <glm/glm.hpp>
 	#include <imgui.h>
 
+	#include <globalParams.h>
+	#include <globalFuns.h>
 	#include <vef.h>
+	#include <debugUtils.h>

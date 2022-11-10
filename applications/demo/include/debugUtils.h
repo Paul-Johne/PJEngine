@@ -4,31 +4,36 @@
 	#include <cstdint>
 	#include <type_traits>
 
-	#include <vef.h>
 	#include <vulkan/vulkan.h>
 
+	#include <globalParams.h>
+	#include <vef.h>
+
 /* debugUtils for VK_EXT_debug_utils
-**	set_object_name => uses vef::vkSetDebugUtilsObjectNameEXT
-**	get_object_type => verify the VKObjectType for set_object_name
+*	debugPhysicalDeviceStats	=> prints useful information about GPUs
+**	set_object_name				=> uses vef::vkSetDebugUtilsObjectNameEXT
+**	get_object_type				=> verify the VKObjectType for set_object_name
 */
 namespace pje {
 	void debugPhysicalDeviceStats(VkPhysicalDevice& device);
 
-	template <typename VulkanHandle>
-	inline constexpr VkObjectType get_object_type(VulkanHandle handle = VK_NULL_HANDLE);
+	template <typename T>
+	constexpr VkObjectType get_object_type(T handle = VK_NULL_HANDLE);
 
-    template <typename VulkanObjectType, bool enable_debug_func = true>
-    VkResult set_object_name(VkDevice device, VulkanObjectType object, const char* name, const void* next = nullptr);
+    template <typename T, bool enable_debug_func = true>
+    VkResult set_object_name(VkDevice device, T object, const char* name, const void* next = nullptr);
 }
 
-template <typename VulkanObjectType, bool enable_debug_func>
-VkResult pje::set_object_name(VkDevice device, VulkanObjectType object, const char* name, const void* next) {
+// ################################################################################################################################################################## //
+
+template <typename T, bool enable_debug_func>
+VkResult pje::set_object_name(VkDevice device, T object, const char* name, const void* next) {
     // do nothing in release mode
     if constexpr (enable_debug_func) {
 		const VkDebugUtilsObjectNameInfoEXT name_info{
 			VkStructureType::VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
 			next,
-			get_object_type<VulkanObjectType>(),
+			get_object_type<T>(),
 			reinterpret_cast<std::uint64_t>(object),
 			name
 		};
@@ -42,7 +47,7 @@ VkResult pje::set_object_name(VkDevice device, VulkanObjectType object, const ch
 	}
 }
 
-void debugPhysicalDeviceStats(VkPhysicalDevice& device) {
+void pje::debugPhysicalDeviceStats(VkPhysicalDevice& device) {
 	VkPhysicalDeviceProperties properties;
 	vkGetPhysicalDeviceProperties(device, &properties);
 
@@ -86,7 +91,7 @@ void debugPhysicalDeviceStats(VkPhysicalDevice& device) {
 
 	/* SurfaceCapabilities => checks access to triple buffering etc. */
 	VkSurfaceCapabilitiesKHR surfaceCapabilities;
-	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, pje::surface, &surfaceCapabilities);
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, pje::context.surface, &surfaceCapabilities);
 	std::cout << "\t\t\t\tSurface Capabilities:" << std::endl;
 	std::cout << "\t\t\t\t\tminImageCount:\t\t" << surfaceCapabilities.minImageCount << std::endl;
 	std::cout << "\t\t\t\t\tmaxImageCount:\t\t" << surfaceCapabilities.maxImageCount << std::endl;
@@ -94,9 +99,9 @@ void debugPhysicalDeviceStats(VkPhysicalDevice& device) {
 
 	/* SurfaceFormats => defines how colors are stored */
 	uint32_t numberOfFormats = 0;
-	vkGetPhysicalDeviceSurfaceFormatsKHR(device, pje::surface, &numberOfFormats, nullptr);
+	vkGetPhysicalDeviceSurfaceFormatsKHR(device, pje::context.surface, &numberOfFormats, nullptr);
 	auto surfaceFormats = std::vector<VkSurfaceFormatKHR>(numberOfFormats);
-	vkGetPhysicalDeviceSurfaceFormatsKHR(device, pje::surface, &numberOfFormats, surfaceFormats.data());
+	vkGetPhysicalDeviceSurfaceFormatsKHR(device, pje::context.surface, &numberOfFormats, surfaceFormats.data());
 
 	std::cout << "\t\t\t\tVkFormats: " << std::endl;
 	for (uint32_t i = 0; i < numberOfFormats; i++) {
@@ -105,9 +110,9 @@ void debugPhysicalDeviceStats(VkPhysicalDevice& device) {
 
 	/* PresentationMode => how CPU and GPU may interact with swapchain images */
 	uint32_t numberOfPresentationModes = 0;
-	vkGetPhysicalDeviceSurfacePresentModesKHR(device, pje::surface, &numberOfPresentationModes, nullptr);
+	vkGetPhysicalDeviceSurfacePresentModesKHR(device, pje::context.surface, &numberOfPresentationModes, nullptr);
 	auto presentModes = std::vector<VkPresentModeKHR>(numberOfPresentationModes);
-	vkGetPhysicalDeviceSurfacePresentModesKHR(device, pje::surface, &numberOfPresentationModes, presentModes.data());
+	vkGetPhysicalDeviceSurfacePresentModesKHR(device, pje::context.surface, &numberOfPresentationModes, presentModes.data());
 
 	/* Index 0 is necessary for immediate presentation */
 	std::cout << "\t\t\t\tPresentation Modes:" << std::endl;
@@ -116,107 +121,107 @@ void debugPhysicalDeviceStats(VkPhysicalDevice& device) {
 	}
 }
 
-template <typename VulkanHandle>
-inline constexpr VkObjectType pje::get_object_type(VulkanHandle handle) {
-	if constexpr (std::is_convertible_v<VulkanHandle, VkInstance>)
+template <typename T>
+constexpr VkObjectType pje::get_object_type(T handle) {
+	if constexpr (std::is_convertible_v<T, VkInstance>)
 		return VkObjectType::VK_OBJECT_TYPE_INSTANCE;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkPhysicalDevice>)
+	else if constexpr (std::is_convertible_v<T, VkPhysicalDevice>)
 		return VkObjectType::VK_OBJECT_TYPE_PHYSICAL_DEVICE;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkDevice>)
+	else if constexpr (std::is_convertible_v<T, VkDevice>)
 		return VkObjectType::VK_OBJECT_TYPE_DEVICE;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkQueue>)
+	else if constexpr (std::is_convertible_v<T, VkQueue>)
 		return VkObjectType::VK_OBJECT_TYPE_QUEUE;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkSemaphore>)
+	else if constexpr (std::is_convertible_v<T, VkSemaphore>)
 		return VkObjectType::VK_OBJECT_TYPE_SEMAPHORE;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkCommandBuffer>)
+	else if constexpr (std::is_convertible_v<T, VkCommandBuffer>)
 		return VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkFence>)
+	else if constexpr (std::is_convertible_v<T, VkFence>)
 		return VkObjectType::VK_OBJECT_TYPE_FENCE;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkDeviceMemory>)
+	else if constexpr (std::is_convertible_v<T, VkDeviceMemory>)
 		return VkObjectType::VK_OBJECT_TYPE_DEVICE_MEMORY;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkBuffer>)
+	else if constexpr (std::is_convertible_v<T, VkBuffer>)
 		return VkObjectType::VK_OBJECT_TYPE_BUFFER;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkImage>)
+	else if constexpr (std::is_convertible_v<T, VkImage>)
 		return VkObjectType::VK_OBJECT_TYPE_IMAGE;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkEvent>)
+	else if constexpr (std::is_convertible_v<T, VkEvent>)
 		return VkObjectType::VK_OBJECT_TYPE_EVENT;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkQueryPool>)
+	else if constexpr (std::is_convertible_v<T, VkQueryPool>)
 		return VkObjectType::VK_OBJECT_TYPE_QUERY_POOL;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkBufferView>)
+	else if constexpr (std::is_convertible_v<T, VkBufferView>)
 		return VkObjectType::VK_OBJECT_TYPE_BUFFER_VIEW;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkImageView>)
+	else if constexpr (std::is_convertible_v<T, VkImageView>)
 		return VkObjectType::VK_OBJECT_TYPE_IMAGE_VIEW;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkShaderModule>)
+	else if constexpr (std::is_convertible_v<T, VkShaderModule>)
 		return VkObjectType::VK_OBJECT_TYPE_SHADER_MODULE;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkPipelineCache>)
+	else if constexpr (std::is_convertible_v<T, VkPipelineCache>)
 		return VkObjectType::VK_OBJECT_TYPE_PIPELINE_CACHE;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkPipelineLayout>)
+	else if constexpr (std::is_convertible_v<T, VkPipelineLayout>)
 		return VkObjectType::VK_OBJECT_TYPE_PIPELINE_LAYOUT;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkRenderPass>)
+	else if constexpr (std::is_convertible_v<T, VkRenderPass>)
 		return VkObjectType::VK_OBJECT_TYPE_RENDER_PASS;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkPipeline>)
+	else if constexpr (std::is_convertible_v<T, VkPipeline>)
 		return VkObjectType::VK_OBJECT_TYPE_PIPELINE;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkDescriptorSetLayout>)
+	else if constexpr (std::is_convertible_v<T, VkDescriptorSetLayout>)
 		return VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkSampler>)
+	else if constexpr (std::is_convertible_v<T, VkSampler>)
 		return VkObjectType::VK_OBJECT_TYPE_SAMPLER;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkDescriptorPool>)
+	else if constexpr (std::is_convertible_v<T, VkDescriptorPool>)
 		return VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_POOL;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkDescriptorSet>)
+	else if constexpr (std::is_convertible_v<T, VkDescriptorSet>)
 		return VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_SET;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkFramebuffer>)
+	else if constexpr (std::is_convertible_v<T, VkFramebuffer>)
 		return VkObjectType::VK_OBJECT_TYPE_FRAMEBUFFER;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkCommandPool>)
+	else if constexpr (std::is_convertible_v<T, VkCommandPool>)
 		return VkObjectType::VK_OBJECT_TYPE_COMMAND_POOL;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkSamplerYcbcrConversion>)
+	else if constexpr (std::is_convertible_v<T, VkSamplerYcbcrConversion>)
 		return VkObjectType::VK_OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkDescriptorUpdateTemplate>)
+	else if constexpr (std::is_convertible_v<T, VkDescriptorUpdateTemplate>)
 		return VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkPrivateDataSlot>)
+	else if constexpr (std::is_convertible_v<T, VkPrivateDataSlot>)
 		return VkObjectType::VK_OBJECT_TYPE_PRIVATE_DATA_SLOT;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkSurfaceKHR>)
+	else if constexpr (std::is_convertible_v<T, VkSurfaceKHR>)
 		return VkObjectType::VK_OBJECT_TYPE_SURFACE_KHR;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkSwapchainKHR>)
+	else if constexpr (std::is_convertible_v<T, VkSwapchainKHR>)
 		return VkObjectType::VK_OBJECT_TYPE_SWAPCHAIN_KHR;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkDisplayKHR>)
+	else if constexpr (std::is_convertible_v<T, VkDisplayKHR>)
 		return VkObjectType::VK_OBJECT_TYPE_DISPLAY_KHR;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkDisplayModeKHR>)
+	else if constexpr (std::is_convertible_v<T, VkDisplayModeKHR>)
 		return VkObjectType::VK_OBJECT_TYPE_DISPLAY_MODE_KHR;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkDebugReportCallbackEXT>)
+	else if constexpr (std::is_convertible_v<T, VkDebugReportCallbackEXT>)
 		return VkObjectType::VK_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT;
 #ifdef VK_ENABLE_BETA_EXTENSIONS
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkVideoSessionKHR>)
+	else if constexpr (std::is_convertible_v<T, VkVideoSessionKHR>)
 		return VkObjectType::VK_OBJECT_TYPE_VIDEO_SESSION_KHR;
 #endif
 #ifdef VK_ENABLE_BETA_EXTENSIONS
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkVideoSessionParametersKHR>)
+	else if constexpr (std::is_convertible_v<T, VkVideoSessionParametersKHR>)
 		return VkObjectType::VK_OBJECT_TYPE_VIDEO_SESSION_PARAMETERS_KHR;
 #endif
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkCuModuleNVX>)
+	else if constexpr (std::is_convertible_v<T, VkCuModuleNVX>)
 		return VkObjectType::VK_OBJECT_TYPE_CU_MODULE_NVX;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkCuFunctionNVX>)
+	else if constexpr (std::is_convertible_v<T, VkCuFunctionNVX>)
 		return VkObjectType::VK_OBJECT_TYPE_CU_FUNCTION_NVX;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkDebugUtilsMessengerEXT>)
+	else if constexpr (std::is_convertible_v<T, VkDebugUtilsMessengerEXT>)
 		return VkObjectType::VK_OBJECT_TYPE_DEBUG_UTILS_MESSENGER_EXT;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkAccelerationStructureKHR>)
+	else if constexpr (std::is_convertible_v<T, VkAccelerationStructureKHR>)
 		return VkObjectType::VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkValidationCacheEXT>)
+	else if constexpr (std::is_convertible_v<T, VkValidationCacheEXT>)
 		return VkObjectType::VK_OBJECT_TYPE_VALIDATION_CACHE_EXT;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkAccelerationStructureNV>)
+	else if constexpr (std::is_convertible_v<T, VkAccelerationStructureNV>)
 		return VkObjectType::VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkPerformanceConfigurationINTEL>)
+	else if constexpr (std::is_convertible_v<T, VkPerformanceConfigurationINTEL>)
 		return VkObjectType::VK_OBJECT_TYPE_PERFORMANCE_CONFIGURATION_INTEL;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkDeferredOperationKHR>)
+	else if constexpr (std::is_convertible_v<T, VkDeferredOperationKHR>)
 		return VkObjectType::VK_OBJECT_TYPE_DEFERRED_OPERATION_KHR;
-	else if constexpr (std::is_convertible_v<VulkanHandle, VkIndirectCommandsLayoutNV>)
+	else if constexpr (std::is_convertible_v<T, VkIndirectCommandsLayoutNV>)
 		return VkObjectType::VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NV;
-	/*else if constexpr (std::is_convertible_v<VulkanHandle, VkBufferCollectionFUCHSIA>)
+	/*else if constexpr (std::is_convertible_v<T, VkBufferCollectionFUCHSIA>)
 		return VkObjectType::VK_OBJECT_TYPE_BUFFER_COLLECTION_FUCHSIA;*/
-		/*else if constexpr (std::is_convertible_v<VulkanHandle, VkInstance>)
+		/*else if constexpr (std::is_convertible_v<T, VkInstance>)
 			return VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_KHR;
-		else if constexpr (std::is_convertible_v<VulkanHandle, VkInstance>)
+		else if constexpr (std::is_convertible_v<T, VkInstance>)
 			return VkObjectType::VK_OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION_KHR;
-		else if constexpr (std::is_convertible_v<VulkanHandle, VkInstance>)
+		else if constexpr (std::is_convertible_v<T, VkInstance>)
 			return VkObjectType::VK_OBJECT_TYPE_PRIVATE_DATA_SLOT_EXT;*/
 	else
 		return VkObjectType::VK_OBJECT_TYPE_UNKNOWN;

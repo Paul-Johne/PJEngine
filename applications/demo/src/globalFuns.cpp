@@ -1,9 +1,11 @@
 #include <globalFuns.h>
+#include <globalParams.h>
 
 using namespace std;
 
-std::vector<char> readSpirvFile(const std::string& filename) {
-	// using ios:ate FLAG to retrieve fileSize ; _Prot default is set to 64
+/* Reads spv Files into RAM for GraphicsPipeline */
+vector<char> pje::readSpirvFile(const string& filename) {
+	// using ios:ate FLAG to retrieve fileSize => ate sets pointer to the end (ate => at end) ; _Prot default is set to 64
 	ifstream currentFile(filename, ios::binary | ios::ate);
 
 	// ifstream converts object currentFile to TRUE if the file was opened successfully
@@ -25,3 +27,44 @@ std::vector<char> readSpirvFile(const std::string& filename) {
 		throw runtime_error("Failed to read shaderfile into RAM!");
 	}
 }
+
+// ################################################################################################################################################################## //
+
+/* Transforming shader code of type vector<char> into VkShaderModule */
+void pje::createShaderModule(const vector<char>& spvCode, VkShaderModule& shaderModule) {
+	VkShaderModuleCreateInfo shaderModuleInfo;
+	shaderModuleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	shaderModuleInfo.pNext = nullptr;
+	shaderModuleInfo.flags = 0;
+	shaderModuleInfo.codeSize = spvCode.size();
+	shaderModuleInfo.pCode = (uint32_t*)spvCode.data();	// spv instructions always have a size of 32 bits, so casting is possible
+
+	pje::context.result = vkCreateShaderModule(pje::context.logicalDevice, &shaderModuleInfo, nullptr, &shaderModule);
+	if (pje::context.result != VK_SUCCESS) {
+		cout << "Error at vkCreateShaderModule" << endl;
+		throw runtime_error("Failed to create VkShaderModule");
+	}
+}
+
+/* Adds element (module) to pje::shaderStageInfos */
+void pje::addShaderModuleToShaderStages(VkShaderModule newModule, VkShaderStageFlagBits stageType, const char* shaderEntryPoint) {
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfo;
+
+	shaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderStageCreateInfo.pNext = nullptr;
+	shaderStageCreateInfo.flags = 0;
+	shaderStageCreateInfo.stage = stageType;
+	shaderStageCreateInfo.module = newModule;
+	shaderStageCreateInfo.pName = shaderEntryPoint;			// entry point of the module
+	shaderStageCreateInfo.pSpecializationInfo = nullptr;	// declaring const variables helps Vulkan to optimise shader code
+
+	pje::context.shaderStageInfos.push_back(shaderStageCreateInfo);
+}
+
+/* Clears globalParam that will be requested by the GraphicsPipeline */
+void pje::clearShaderStages() {
+	pje::context.shaderStageInfos.clear();
+}
+
+// ################################################################################################################################################################## //
+

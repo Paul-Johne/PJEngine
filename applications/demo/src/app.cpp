@@ -1,7 +1,4 @@
 ﻿#include <app.h>
-#include <globalParams.h>
-#include <globalFuns.h>
-#include <debugUtils.h>
 
 using namespace std;
 
@@ -17,8 +14,8 @@ int startGlfw3(const char* windowName) {
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-	pje::window = glfwCreateWindow(pje::WINDOW_WIDTH, pje::WINDOW_HEIGHT, windowName, nullptr, nullptr);
-	if (pje::window == NULL) {
+	pje::context.window = glfwCreateWindow(pje::context.WINDOW_WIDTH, pje::context.WINDOW_HEIGHT, windowName, nullptr, nullptr);
+	if (pje::context.window == NULL) {
 		cout << "Error at glfwCreateWindow" << endl;
 		glfwTerminate();
 		return -1;
@@ -28,43 +25,8 @@ int startGlfw3(const char* windowName) {
 }
 
 void stopGlfw3() {
-	glfwDestroyWindow(pje::window);
+	glfwDestroyWindow(pje::context.window);
 	glfwTerminate();
-}
-
-/* Transforming shader code of type vector<char> into VkShaderModule */
-void createShaderModule(const vector<char>& spvCode, VkShaderModule& shaderModule) {
-	VkShaderModuleCreateInfo shaderModuleInfo;
-	shaderModuleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	shaderModuleInfo.pNext = nullptr;
-	shaderModuleInfo.flags = 0;
-	shaderModuleInfo.codeSize = spvCode.size();
-	shaderModuleInfo.pCode = (uint32_t*) spvCode.data();	// spv instructions always have a size of 32 bits, so casting is possible
-
-	pje::result = vkCreateShaderModule(pje::logicalDevice, &shaderModuleInfo, nullptr, &shaderModule);
-	if (pje::result != VK_SUCCESS) {
-		cout << "Error at vkCreateShaderModule" << endl;
-		throw runtime_error("Failed to create VkShaderModule");
-	}
-}
-
-/* Adds element (module) to pje::shaderStageInfos */
-void addShaderModuleToShaderStages(VkShaderModule newModule, VkShaderStageFlagBits stageType, const char* shaderEntryPoint = "main") {
-	VkPipelineShaderStageCreateInfo shaderStageCreateInfo;
-
-	shaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	shaderStageCreateInfo.pNext = nullptr;
-	shaderStageCreateInfo.flags = 0;
-	shaderStageCreateInfo.stage = stageType;
-	shaderStageCreateInfo.module = newModule;
-	shaderStageCreateInfo.pName = shaderEntryPoint;			// entry point of the module
-	shaderStageCreateInfo.pSpecializationInfo = nullptr;	// declaring const variables helps Vulkan to optimise shader code
-
-	pje::shaderStageInfos.push_back(shaderStageCreateInfo);
-}
-
-void clearShaderStages() {
-	pje::shaderStageInfos.clear();
 }
 
 int startVulkan() {
@@ -72,7 +34,7 @@ int startVulkan() {
 	VkApplicationInfo appInfo;
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;				// sType for (GPU) driver
 	appInfo.pNext = nullptr;
-	appInfo.pApplicationName = pje::appName;
+	appInfo.pApplicationName = pje::context.appName;
 	appInfo.applicationVersion = VK_MAKE_VERSION(0, 0, 0);
 	appInfo.pEngineName = "PJ Engine";
 	appInfo.engineVersion = VK_MAKE_VERSION(0, 0, 0);
@@ -165,19 +127,19 @@ int startVulkan() {
 	instanceInfo.ppEnabledExtensionNames = usedInstanceExtensions.data();
 
 	/* Vulkan Loader loads layers */
-	pje::result = vkCreateInstance(&instanceInfo, nullptr, &pje::vulkanInstance);
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = vkCreateInstance(&instanceInfo, nullptr, &pje::context.vulkanInstance);
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkCreateInstance" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 
-	vef::vkSetDebugUtilsObjectNameEXT = (PFN_vkSetDebugUtilsObjectNameEXT)(vkGetInstanceProcAddr(pje::vulkanInstance, "vkSetDebugUtilsObjectNameEXT"));
+	vef::vkSetDebugUtilsObjectNameEXT = (PFN_vkSetDebugUtilsObjectNameEXT)(vkGetInstanceProcAddr(pje::context.vulkanInstance, "vkSetDebugUtilsObjectNameEXT"));
 
 	/* VkSurfaceKHR => creates surface based on an existing GLFW Window */
-	pje::result = glfwCreateWindowSurface(pje::vulkanInstance, pje::window, nullptr, &pje::surface);
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = glfwCreateWindowSurface(pje::context.vulkanInstance, pje::context.window, nullptr, &pje::context.surface);
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at glfwCreateWindowSurface" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 
 	/* Vulkan differs between PHYSICAL and LOGICAL GPU reference */
@@ -186,19 +148,19 @@ int startVulkan() {
 
 	/*	vkEnumeratePhysicalDevices has two functionalities (depending on 3rd parameter):
 		1) get number of GPUs and stores value in 2nd parameter */
-	vkEnumeratePhysicalDevices(pje::vulkanInstance, &numberOfPhysicalDevices, nullptr);
+	vkEnumeratePhysicalDevices(pje::context.vulkanInstance, &numberOfPhysicalDevices, nullptr);
 
 	auto physicalDevices = vector<VkPhysicalDevice>(numberOfPhysicalDevices);
 
 	/*	vkEnumeratePhysicalDevices has two functionalities:
 		2) get reference for a number of GPUs and store them in an array of physical devices */
-	vkEnumeratePhysicalDevices(pje::vulkanInstance, &numberOfPhysicalDevices, physicalDevices.data());
+	vkEnumeratePhysicalDevices(pje::context.vulkanInstance, &numberOfPhysicalDevices, physicalDevices.data());
 
 	cout << "\n[OS] Number of GPUs:\t\t" << numberOfPhysicalDevices << endl;
 
 	/* Shows some properties and features for each available GPU */
 	for (uint32_t i = 0; i < numberOfPhysicalDevices; i++) {
-		debugPhysicalDeviceStats(physicalDevices[i]);
+		pje::debugPhysicalDeviceStats(physicalDevices[i]);
 	}
 
 	array<float, 1> queuePriorities {
@@ -237,22 +199,22 @@ int startVulkan() {
 	deviceInfo.pEnabledFeatures = nullptr;
 
 	/* LOGICAL GPU reference => ! choose the best GPU for your task ! */
-	pje::result = vkCreateDevice(physicalDevices[0], &deviceInfo, nullptr, &pje::logicalDevice);
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = vkCreateDevice(physicalDevices[0], &deviceInfo, nullptr, &pje::context.logicalDevice);
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkCreateDevice" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 
 	/* Getting Queue of some logical device to assign tasks (CommandBuffer) later */
-	vkGetDeviceQueue(pje::logicalDevice, 0, 0, &pje::queueForPrototyping);
+	vkGetDeviceQueue(pje::context.logicalDevice, 0, 0, &pje::context.queueForPrototyping);
 
 	/* Checking whether Swapchains are usable or not on physical device */
 	VkBool32 surfaceSupportsSwapchain = false;
-	pje::result = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevices[0], 0, pje::surface, &surfaceSupportsSwapchain);
+	pje::context.result = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevices[0], 0, pje::context.surface, &surfaceSupportsSwapchain);
 
-	if (pje::result != VK_SUCCESS) {
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkGetPhysicalDeviceSurfaceSupportKHR" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 	if (!surfaceSupportsSwapchain) {
 		cout << "Surface not support for the choosen GPU!" << endl;
@@ -264,11 +226,11 @@ int startVulkan() {
 	swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	swapchainInfo.pNext = nullptr;
 	swapchainInfo.flags = 0;
-	swapchainInfo.surface = pje::surface;
+	swapchainInfo.surface = pje::context.surface;
 	swapchainInfo.minImageCount = 2;												// requires AT LEAST 2 (double buffering)
-	swapchainInfo.imageFormat = pje::outputFormat;								// TODO ( choose dynamically )
+	swapchainInfo.imageFormat = pje::context.outputFormat;								// TODO ( choose dynamically )
 	swapchainInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;				// TODO ( choose dynamically )
-	swapchainInfo.imageExtent = VkExtent2D { pje::WINDOW_WIDTH, pje::WINDOW_HEIGHT };
+	swapchainInfo.imageExtent = VkExtent2D { pje::context.WINDOW_WIDTH, pje::context.WINDOW_HEIGHT };
 	swapchainInfo.imageArrayLayers = 1;
 	swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	swapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;						// image shared between multiple queues?
@@ -281,22 +243,22 @@ int startVulkan() {
 	swapchainInfo.oldSwapchain = VK_NULL_HANDLE;									// resizing image needs new swapchain
 
 	/* Setting Swapchain with swapchainInfo to logicalDevice */
-	pje::result = vkCreateSwapchainKHR(pje::logicalDevice, &swapchainInfo, nullptr, &pje::swapchain);
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = vkCreateSwapchainKHR(pje::context.logicalDevice, &swapchainInfo, nullptr, &pje::context.swapchain);
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkCreateSwapchainKHR" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 
 	/* Gets images of Swapchain => should be already declared via swapchainInfo.minImageCount */
-	pje::numberOfImagesInSwapchain = 0;
-	vkGetSwapchainImagesKHR(pje::logicalDevice, pje::swapchain, &pje::numberOfImagesInSwapchain, nullptr);
-	auto swapchainImages = vector<VkImage>(pje::numberOfImagesInSwapchain);
+	pje::context.numberOfImagesInSwapchain = 0;
+	vkGetSwapchainImagesKHR(pje::context.logicalDevice, pje::context.swapchain, &pje::context.numberOfImagesInSwapchain, nullptr);
+	auto swapchainImages = vector<VkImage>(pje::context.numberOfImagesInSwapchain);
 
 	/* swapchainImages will hold the reference to VkImage(s), BUT to access them there has to be VkImageView(s) */
-	pje::result = vkGetSwapchainImagesKHR(pje::logicalDevice, pje::swapchain, &pje::numberOfImagesInSwapchain, swapchainImages.data());
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = vkGetSwapchainImagesKHR(pje::context.logicalDevice, pje::context.swapchain, &pje::context.numberOfImagesInSwapchain, swapchainImages.data());
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkGetSwapchainImagesKHR" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 
 	/* ImageViewInfo for building ImageView ! TODO ! */
@@ -305,7 +267,7 @@ int startVulkan() {
 	imageViewInfo.pNext = nullptr;
 	imageViewInfo.flags = 0;
 	imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	imageViewInfo.format = pje::outputFormat;			// TODO ( choose dynamically )
+	imageViewInfo.format = pje::context.outputFormat;			// TODO ( choose dynamically )
 	imageViewInfo.components = VkComponentMapping {
 		VK_COMPONENT_SWIZZLE_IDENTITY	// properties r,g,b,a stay as their identity 
 	};
@@ -318,49 +280,49 @@ int startVulkan() {
 	};
 
 	/* ImageView gives access to images in swapchainImages */
-	pje::imageViews = make_unique<VkImageView[]>(pje::numberOfImagesInSwapchain);
+	pje::context.imageViews = make_unique<VkImageView[]>(pje::context.numberOfImagesInSwapchain);
 
-	for (uint32_t i = 0; i < pje::numberOfImagesInSwapchain; i++) {
+	for (uint32_t i = 0; i < pje::context.numberOfImagesInSwapchain; i++) {
 		imageViewInfo.image = swapchainImages[i];
 
-		pje::result = vkCreateImageView(pje::logicalDevice, &imageViewInfo, nullptr, &pje::imageViews[i]);
-		if (pje::result != VK_SUCCESS) {
+		pje::context.result = vkCreateImageView(pje::context.logicalDevice, &imageViewInfo, nullptr, &pje::context.imageViews[i]);
+		if (pje::context.result != VK_SUCCESS) {
 			cout << "Error at vkCreateImageView" << endl;
-			return pje::result;
+			return pje::context.result;
 		}
 	}
 
 	/* Reading compiled shader code into RAM */
-	auto shaderBasicVert = readSpirvFile("assets/shaders/basic.vert.spv");
-	auto shaderBasicFrag = readSpirvFile("assets/shaders/basic.frag.spv");
+	auto shaderBasicVert = pje::readSpirvFile("assets/shaders/basic.vert.spv");
+	auto shaderBasicFrag = pje::readSpirvFile("assets/shaders/basic.frag.spv");
 	cout << "\n[DEBUG] Basic Shader Sizes: " << shaderBasicVert.size() << " Vert | Frag " << shaderBasicFrag.size() << endl;
 
 	/* Transforming shader code of type vector<char> into VkShaderModule */
-	createShaderModule(shaderBasicVert, pje::shaderModuleBasicVert);
-	createShaderModule(shaderBasicFrag, pje::shaderModuleBasicFrag);
+	pje::createShaderModule(shaderBasicVert, pje::context.shaderModuleBasicVert);
+	pje::createShaderModule(shaderBasicFrag, pje::context.shaderModuleBasicFrag);
 
 	/* Ensures that pje::shaderStageInfos are empty before filling with data */
-	if (!pje::shaderStageInfos.empty())
-		clearShaderStages();
+	if (!pje::context.shaderStageInfos.empty())
+		pje::clearShaderStages();
 
 	/* Wraping Shader Modules in a distinct CreateInfo for the Shaderpipeline and adding them to engine's stageInfos */
-	addShaderModuleToShaderStages(pje::shaderModuleBasicVert, VK_SHADER_STAGE_VERTEX_BIT);
-	addShaderModuleToShaderStages(pje::shaderModuleBasicFrag, VK_SHADER_STAGE_FRAGMENT_BIT);
-	cout << "\n[DEBUG] Programable Pipeline Stages in pje::shaderStageInfos: " << pje::shaderStageInfos.size() << endl;
+	pje::addShaderModuleToShaderStages(pje::context.shaderModuleBasicVert, VK_SHADER_STAGE_VERTEX_BIT);
+	pje::addShaderModuleToShaderStages(pje::context.shaderModuleBasicFrag, VK_SHADER_STAGE_FRAGMENT_BIT);
+	cout << "\n[DEBUG] Programable Pipeline Stages in pje::shaderStageInfos: " << pje::context.shaderStageInfos.size() << endl;
 
 	/* Viewport */
 	VkViewport viewport;
 	viewport.x = 0.0f;							// upper left corner
 	viewport.y = 0.0f;							// upper left corner
-	viewport.width = pje::WINDOW_WIDTH;
-	viewport.height = pje::WINDOW_HEIGHT;
+	viewport.width = pje::context.WINDOW_WIDTH;
+	viewport.height = pje::context.WINDOW_HEIGHT;
 	viewport.minDepth = 0.0f;
 	viewport.maxDepth = 1.0f;
 
 	/* Scissor defines what part of the viewport will be used */
 	VkRect2D scissor;
 	scissor.offset = { 0, 0 };
-	scissor.extent = { pje::WINDOW_WIDTH,  pje::WINDOW_HEIGHT };
+	scissor.extent = { pje::context.WINDOW_WIDTH,  pje::context.WINDOW_HEIGHT };
 
 	/* PIPELINE BUILDING */
 	/* Shader pipelines consist out of fixed functions and programmable functions (shaders) */
@@ -446,10 +408,10 @@ int startVulkan() {
 	pipelineLayoutInfo.pushConstantRangeCount = 0;
 	pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
-	pje::result = vkCreatePipelineLayout(pje::logicalDevice, &pipelineLayoutInfo, nullptr, &pje::pipelineLayout);
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = vkCreatePipelineLayout(pje::context.logicalDevice, &pipelineLayoutInfo, nullptr, &pje::context.pipelineLayout);
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkCreatePipelineLayout" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 
 	// Multisampling for Antialiasing
@@ -469,7 +431,7 @@ int startVulkan() {
 	// Attachments need a description
 	VkAttachmentDescription attachmentDescription;
 	attachmentDescription.flags = 0;
-	attachmentDescription.format = pje::outputFormat;						// has the same format as the swapchainInfo.imageFormat
+	attachmentDescription.format = pje::context.outputFormat;					// has the same format as the swapchainInfo.imageFormat
 	attachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT;						// for multisampling
 	attachmentDescription.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;					// what happens with the buffer after loading data
 	attachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_STORE;				// what happens with the buffer after storing data
@@ -520,10 +482,10 @@ int startVulkan() {
 	renderPassInfo.pDependencies = &subpassDependency;
 
 	/* Creating RenderPass for VkGraphicsPipelineCreateInfo */
-	pje::result = vkCreateRenderPass(pje::logicalDevice, &renderPassInfo, nullptr, &pje::renderPass);
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = vkCreateRenderPass(pje::context.logicalDevice, &renderPassInfo, nullptr, &pje::context.renderPass);
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkCreateRenderPass" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 
 	/* CreateInfo for the actual pipeline */
@@ -532,7 +494,7 @@ int startVulkan() {
 	pipelineInfo.pNext = nullptr;
 	pipelineInfo.flags = 0;
 	pipelineInfo.stageCount = 2;								// number of programmable stages
-	pipelineInfo.pStages = pje::shaderStageInfos.data();
+	pipelineInfo.pStages = pje::context.shaderStageInfos.data();
 	pipelineInfo.pVertexInputState = &vertexInputInfo;
 	pipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
 	pipelineInfo.pTessellationState = nullptr;
@@ -542,36 +504,36 @@ int startVulkan() {
 	pipelineInfo.pDepthStencilState = nullptr;
 	pipelineInfo.pColorBlendState = &colorBlendInfo;
 	pipelineInfo.pDynamicState = nullptr;						// parts being changeable without building new pipeline
-	pipelineInfo.layout = pje::pipelineLayout;
-	pipelineInfo.renderPass = pje::renderPass;
+	pipelineInfo.layout = pje::context.pipelineLayout;
+	pipelineInfo.renderPass = pje::context.renderPass;
 	pipelineInfo.subpass = 0;									// index of .subpass
 	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;			// deriving from other pipeline to reduce loading time
 	pipelineInfo.basePipelineIndex = -1;						// good coding style => invalid index
 
-	pje::result = vkCreateGraphicsPipelines(pje::logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pje::pipeline);
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = vkCreateGraphicsPipelines(pje::context.logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pje::context.pipeline);
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkCreateGraphicsPipelines" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 
 	/* Framebuffer => connects imageView to attachment (Vulkan communication buffer) */
-	pje::framebuffers = make_unique<VkFramebuffer[]>(pje::numberOfImagesInSwapchain);
-	for (uint32_t i = 0; i < pje::numberOfImagesInSwapchain; i++) {
+	pje::context.framebuffers = make_unique<VkFramebuffer[]>(pje::context.numberOfImagesInSwapchain);
+	for (uint32_t i = 0; i < pje::context.numberOfImagesInSwapchain; i++) {
 		VkFramebufferCreateInfo framebufferInfo;
 		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 		framebufferInfo.pNext = nullptr;
 		framebufferInfo.flags = 0;
-		framebufferInfo.renderPass = pje::renderPass;
+		framebufferInfo.renderPass = pje::context.renderPass;
 		framebufferInfo.attachmentCount = 1;							// one framebuffer may store multiple imageViews
-		framebufferInfo.pAttachments = &(pje::imageViews[i]);		// imageView => reference to image in swapchain
-		framebufferInfo.width = pje::WINDOW_WIDTH;					// dimension
-		framebufferInfo.height = pje::WINDOW_HEIGHT;				// dimension
+		framebufferInfo.pAttachments = &(pje::context.imageViews[i]);	// imageView => reference to image in swapchain
+		framebufferInfo.width = pje::context.WINDOW_WIDTH;				// dimension
+		framebufferInfo.height = pje::context.WINDOW_HEIGHT;			// dimension
 		framebufferInfo.layers = 1;										// dimension
 
-		pje::result = vkCreateFramebuffer(pje::logicalDevice, &framebufferInfo, nullptr, &pje::framebuffers[i]);
-		if (pje::result != VK_SUCCESS) {
+		pje::context.result = vkCreateFramebuffer(pje::context.logicalDevice, &framebufferInfo, nullptr, &pje::context.framebuffers[i]);
+		if (pje::context.result != VK_SUCCESS) {
 			cout << "Error at vkCreateFramebuffer" << endl;
-			return pje::result;
+			return pje::context.result;
 		}
 	}
 
@@ -582,24 +544,24 @@ int startVulkan() {
 	commandPoolInfo.flags = 0;						// reset record of single frame buffer | set to buffer to 'transient' for optimisation
 	commandPoolInfo.queueFamilyIndex = 0;			// must be the same as in VkDeviceQueueCreateInfo of the logical device & Queue Family 'VK_QUEUE_GRAPHICS_BIT' must be 1
 
-	pje::result = vkCreateCommandPool(pje::logicalDevice, &commandPoolInfo, nullptr, &pje::commandPool);
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = vkCreateCommandPool(pje::context.logicalDevice, &commandPoolInfo, nullptr, &pje::context.commandPool);
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkCreateCommandPool" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo;
 	commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	commandBufferAllocateInfo.pNext = nullptr;
-	commandBufferAllocateInfo.commandPool = pje::commandPool;
+	commandBufferAllocateInfo.commandPool = pje::context.commandPool;
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;						// primary => processed directly | secondary => invoked by primary
-	commandBufferAllocateInfo.commandBufferCount = pje::numberOfImagesInSwapchain;		// each buffer in swapchain needs dedicated command buffer
+	commandBufferAllocateInfo.commandBufferCount = pje::context.numberOfImagesInSwapchain;	// each buffer in swapchain needs dedicated command buffer
 
-	pje::commandBuffers = make_unique<VkCommandBuffer[]>(pje::numberOfImagesInSwapchain);
-	pje::result = vkAllocateCommandBuffers(pje::logicalDevice, &commandBufferAllocateInfo, pje::commandBuffers.get());
-	if (pje::result != VK_SUCCESS) {
+	pje::context.commandBuffers = make_unique<VkCommandBuffer[]>(pje::context.numberOfImagesInSwapchain);
+	pje::context.result = vkAllocateCommandBuffers(pje::context.logicalDevice, &commandBufferAllocateInfo, pje::context.commandBuffers.get());
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkAllocateCommandBuffers" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 
 	/* CommandBuffer RECORDING => SET command inside of the command buffer */
@@ -616,35 +578,35 @@ int startVulkan() {
 	VkRenderPassBeginInfo renderPassBeginInfo;
 	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderPassBeginInfo.pNext = nullptr;
-	renderPassBeginInfo.renderPass = pje::renderPass;
+	renderPassBeginInfo.renderPass = pje::context.renderPass;
 	renderPassBeginInfo.renderArea.offset = { 0, 0 };
-	renderPassBeginInfo.renderArea.extent = { pje::WINDOW_WIDTH, pje::WINDOW_HEIGHT };
+	renderPassBeginInfo.renderArea.extent = { pje::context.WINDOW_WIDTH, pje::context.WINDOW_HEIGHT };
 	renderPassBeginInfo.clearValueCount = 1;
-	renderPassBeginInfo.pClearValues = &pje::clearValueDefault;
+	renderPassBeginInfo.pClearValues = &pje::context.clearValueDefault;
 
 	/* RECORDING of CommandBuffers */
-	for (uint32_t i = 0; i < pje::numberOfImagesInSwapchain; i++) {
-		pje::result = vkBeginCommandBuffer(pje::commandBuffers[i], &commandBufferBeginInfo);
-		if (pje::result != VK_SUCCESS) {
-			cout << "Error at vkBeginCommandBuffer of Command Buffer No.:\t" << pje::commandBuffers[i] << endl;
-			return pje::result;
+	for (uint32_t i = 0; i < pje::context.numberOfImagesInSwapchain; i++) {
+		pje::context.result = vkBeginCommandBuffer(pje::context.commandBuffers[i], &commandBufferBeginInfo);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkBeginCommandBuffer of Command Buffer No.:\t" << pje::context.commandBuffers[i] << endl;
+			return pje::context.result;
 		}
 
-		renderPassBeginInfo.framebuffer = pje::framebuffers[i];	// framebuffer that the current command buffer is associated with
+		renderPassBeginInfo.framebuffer = pje::context.framebuffers[i];	// framebuffer that the current command buffer is associated with
 
-		vkCmdBeginRenderPass(pje::commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+		vkCmdBeginRenderPass(pje::context.commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		// BIND => decide for an pipeline and use it for graphical calculation
-		vkCmdBindPipeline(pje::commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pje::pipeline);
+		vkCmdBindPipeline(pje::context.commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pje::context.pipeline);
 		// DRAW => drawing on swapchain images
-		vkCmdDraw(pje::commandBuffers[i], 3, 1, 0, 1);				// TODO (hardcoded for current shader)
+		vkCmdDraw(pje::context.commandBuffers[i], 3, 1, 0, 1);				// TODO (hardcoded for current shader)
 
-		vkCmdEndRenderPass(pje::commandBuffers[i]);
+		vkCmdEndRenderPass(pje::context.commandBuffers[i]);
 
-		pje::result = vkEndCommandBuffer(pje::commandBuffers[i]);
-		if (pje::result != VK_SUCCESS) {
-			cout << "Error at vkEndCommandBuffer of Command Buffer No.:\t" << pje::commandBuffers[i] << endl;
-			return pje::result;
+		pje::context.result = vkEndCommandBuffer(pje::context.commandBuffers[i]);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkEndCommandBuffer of Command Buffer No.:\t" << pje::context.commandBuffers[i] << endl;
+			return pje::context.result;
 		}
 	}
 
@@ -655,15 +617,15 @@ int startVulkan() {
 	semaphoreInfo.pNext = nullptr;
 	semaphoreInfo.flags = 0;
 
-	pje::result = vkCreateSemaphore(pje::logicalDevice, &semaphoreInfo, nullptr, &pje::semaphoreSwapchainImageReceived);
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = vkCreateSemaphore(pje::context.logicalDevice, &semaphoreInfo, nullptr, &pje::context.semaphoreSwapchainImageReceived);
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkCreateSemaphore" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
-	pje::result = vkCreateSemaphore(pje::logicalDevice, &semaphoreInfo, nullptr, &pje::semaphoreRenderingFinished);
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = vkCreateSemaphore(pje::context.logicalDevice, &semaphoreInfo, nullptr, &pje::context.semaphoreRenderingFinished);
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkCreateSemaphore" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 
 	VkFenceCreateInfo fenceInfo;
@@ -671,17 +633,17 @@ int startVulkan() {
 	fenceInfo.pNext = nullptr;
 	fenceInfo.flags = VkFenceCreateFlagBits::VK_FENCE_CREATE_SIGNALED_BIT;
 
-	pje::result = vkCreateFence(pje::logicalDevice, &fenceInfo, nullptr, &pje::fenceRenderFinished);
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = vkCreateFence(pje::context.logicalDevice, &fenceInfo, nullptr, &pje::context.fenceRenderFinished);
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkCreateFence" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 
 	/* DEBUG for debugUtils */
-	pje::result = pje::set_object_name(pje::logicalDevice, pje::fenceRenderFinished, "fenceRenderFinished");
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = pje::set_object_name(pje::context.logicalDevice, pje::context.fenceRenderFinished, "fenceRenderFinished");
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at pje::set_object" << endl;
-		return pje::result;
+		return pje::context.result;
 	}
 
 	return 0;
@@ -689,33 +651,34 @@ int startVulkan() {
 
 void stopVulkan() {
 	/* Waiting for Vulkan API to finish all its tasks */
-	vkDeviceWaitIdle(pje::logicalDevice);
+	vkDeviceWaitIdle(pje::context.logicalDevice);
 
-	vkDestroyFence(pje::logicalDevice, pje::fenceRenderFinished, nullptr);
-	vkDestroySemaphore(pje::logicalDevice, pje::semaphoreSwapchainImageReceived, nullptr);
-	vkDestroySemaphore(pje::logicalDevice, pje::semaphoreRenderingFinished, nullptr);
+	vkDestroyFence(pje::context.logicalDevice, pje::context.fenceRenderFinished, nullptr);
+	vkDestroySemaphore(pje::context.logicalDevice, pje::context.semaphoreSwapchainImageReceived, nullptr);
+	vkDestroySemaphore(pje::context.logicalDevice, pje::context.semaphoreRenderingFinished, nullptr);
 
-	vkFreeCommandBuffers(pje::logicalDevice, pje::commandPool, pje::numberOfImagesInSwapchain, pje::commandBuffers.get());	// also automatically done by vkDestroyCommandPool
+	/* also automatically done by vkDestroyCommandPool */
+	vkFreeCommandBuffers(pje::context.logicalDevice, pje::context.commandPool, pje::context.numberOfImagesInSwapchain, pje::context.commandBuffers.get());
 
-	vkDestroyCommandPool(pje::logicalDevice, pje::commandPool, nullptr);
+	vkDestroyCommandPool(pje::context.logicalDevice, pje::context.commandPool, nullptr);
 
 	/* CLEANUP => delete for all 'new' initializations */
-	for (uint32_t i = 0; i < pje::numberOfImagesInSwapchain; i++) {
-		vkDestroyFramebuffer(pje::logicalDevice, pje::framebuffers[i], nullptr);
-		vkDestroyImageView(pje::logicalDevice, pje::imageViews[i], nullptr);
+	for (uint32_t i = 0; i < pje::context.numberOfImagesInSwapchain; i++) {
+		vkDestroyFramebuffer(pje::context.logicalDevice, pje::context.framebuffers[i], nullptr);
+		vkDestroyImageView(pje::context.logicalDevice, pje::context.imageViews[i], nullptr);
 	}
 
-	vkDestroyPipeline(pje::logicalDevice, pje::pipeline, nullptr);
-	vkDestroyRenderPass(pje::logicalDevice, pje::renderPass, nullptr);
-	vkDestroyPipelineLayout(pje::logicalDevice, pje::pipelineLayout, nullptr);
-	vkDestroyShaderModule(pje::logicalDevice, pje::shaderModuleBasicVert, nullptr);
-	vkDestroyShaderModule(pje::logicalDevice, pje::shaderModuleBasicFrag, nullptr);
-	clearShaderStages();
+	vkDestroyPipeline(pje::context.logicalDevice, pje::context.pipeline, nullptr);
+	vkDestroyRenderPass(pje::context.logicalDevice, pje::context.renderPass, nullptr);
+	vkDestroyPipelineLayout(pje::context.logicalDevice, pje::context.pipelineLayout, nullptr);
+	vkDestroyShaderModule(pje::context.logicalDevice, pje::context.shaderModuleBasicVert, nullptr);
+	vkDestroyShaderModule(pje::context.logicalDevice, pje::context.shaderModuleBasicFrag, nullptr);
+	pje::clearShaderStages();
 
-	vkDestroySwapchainKHR(pje::logicalDevice, pje::swapchain, nullptr);
-	vkDestroyDevice(pje::logicalDevice, nullptr);
-	vkDestroySurfaceKHR(pje::vulkanInstance, pje::surface, nullptr);
-	vkDestroyInstance(pje::vulkanInstance, nullptr);
+	vkDestroySwapchainKHR(pje::context.logicalDevice, pje::context.swapchain, nullptr);
+	vkDestroyDevice(pje::context.logicalDevice, nullptr);
+	vkDestroySurfaceKHR(pje::context.vulkanInstance, pje::context.surface, nullptr);
+	vkDestroyInstance(pje::context.vulkanInstance, nullptr);
 }
 
 /* drawFrameOnSurface has 3 steps => using semaphores
@@ -725,35 +688,35 @@ void stopVulkan() {
  */
 void drawFrameOnSurface() {
 	/* CPU waits here for SIGNALED fence(s)*/
-	pje::result = vkWaitForFences(
-		pje::logicalDevice, 
+	pje::context.result = vkWaitForFences(
+		pje::context.logicalDevice,
 		1, 
-		&pje::fenceRenderFinished, 
+		&pje::context.fenceRenderFinished,
 		VK_TRUE, 
 		numeric_limits<uint64_t>::max()
 	);
-	if (pje::result != VK_SUCCESS) {
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkWaitForFences" << endl;
 		return;
 	}
 
 	/* UNSIGNALS fence(s) */
-	pje::result = vkResetFences(
-		pje::logicalDevice, 
+	pje::context.result = vkResetFences(
+		pje::context.logicalDevice,
 		1, 
-		&pje::fenceRenderFinished
+		&pje::context.fenceRenderFinished
 	);
-	if (pje::result != VK_SUCCESS) {
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkResetFences" << endl;
 		return;
 	}
 
 	uint32_t imageIndex;
 	vkAcquireNextImageKHR(
-		pje::logicalDevice, 
-		pje::swapchain, 
+		pje::context.logicalDevice,
+		pje::context.swapchain,
 		numeric_limits<uint64_t>::max(),			// timeout in ns before abort
-		pje::semaphoreSwapchainImageReceived,	// semaphore	=> only visible on GPU side
+		pje::context.semaphoreSwapchainImageReceived,	// semaphore	=> only visible on GPU side
 		VK_NULL_HANDLE,								// fences		=> like semaphores ; usable inside of Cpp Code
 		&imageIndex
 	);
@@ -766,22 +729,22 @@ void drawFrameOnSurface() {
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.pNext = nullptr;
 	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &pje::semaphoreSwapchainImageReceived;
+	submitInfo.pWaitSemaphores = &pje::context.semaphoreSwapchainImageReceived;
 	submitInfo.pWaitDstStageMask = waitStageMask.data();
 	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &pje::commandBuffers[imageIndex];
+	submitInfo.pCommandBuffers = &pje::context.commandBuffers[imageIndex];
 	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &pje::semaphoreRenderingFinished;				// which semaphores will be triggered
+	submitInfo.pSignalSemaphores = &pje::context.semaphoreRenderingFinished;				// which semaphores will be triggered
 
 	/* Submitting commandBuffer to queue => ACTUAL RENDERING */
 	/* Fence must be unsignaled to proceed and SIGNALS fence */
-	pje::result = vkQueueSubmit(
-		pje::queueForPrototyping, 
+	pje::context.result = vkQueueSubmit(
+		pje::context.queueForPrototyping,
 		1, 
 		&submitInfo, 
-		pje::fenceRenderFinished
+		pje::context.fenceRenderFinished
 	);
-	if (pje::result != VK_SUCCESS) {
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkQueueSubmit" << endl;
 		return;
 	}
@@ -790,14 +753,14 @@ void drawFrameOnSurface() {
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presentInfo.pNext = nullptr;
 	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &pje::semaphoreRenderingFinished;	// waiting for rendering to finish before presenting
+	presentInfo.pWaitSemaphores = &pje::context.semaphoreRenderingFinished;	// waiting for rendering to finish before presenting
 	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = &pje::swapchain;
+	presentInfo.pSwapchains = &pje::context.swapchain;
 	presentInfo.pImageIndices = &imageIndex;
 	presentInfo.pResults = nullptr;											// error code from different swapchains possible
 
-	pje::result = vkQueuePresentKHR(pje::queueForPrototyping, &presentInfo);
-	if (pje::result != VK_SUCCESS) {
+	pje::context.result = vkQueuePresentKHR(pje::context.queueForPrototyping, &presentInfo);
+	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkQueuePresentKHR" << endl;
 		return;
 	}
@@ -816,21 +779,27 @@ int main() {
 
 	int res;
 
-	res = startGlfw3(pje::appName);
-	if (res != 0) {
-		return res;
-	}
+	try {
+		res = startGlfw3(pje::context.appName);
+		if (res != 0) {
+			return res;
+		}
 
-	res = startVulkan();
-	if (res != 0) {
+		res = startVulkan();
+		if (res != 0) {
+			stopGlfw3();
+			return res;
+		}
+
+		loopVisualizationOf(pje::context.window);
+
+		stopVulkan();
 		stopGlfw3();
-		return res;
 	}
-
-	loopVisualizationOf(pje::window);
-
-	stopVulkan();
-	stopGlfw3();
+	catch (exception& ex) {
+		cout << "Exception thrown: " << ex.what() << endl;
+		return -1;
+	}
 
 	return 0;
 }

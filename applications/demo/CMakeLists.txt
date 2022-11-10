@@ -11,6 +11,7 @@ set(DEMO_SOURCES
 
     "${CMAKE_CURRENT_SOURCE_DIR}/src/app.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/globalFuns.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/globalParams.cpp"
 )
 
 set(SHADER_SOURCES

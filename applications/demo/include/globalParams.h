@@ -1,45 +1,56 @@
 /* Ignores header if not needed after #include */
 	#pragma once
 
+	#include <memory>
 	#include <vector>
 	#include <array>
+
 	#include <vulkan/vulkan.h>
+	#include <GLFW/glfw3.h>
+	#include <glm/glm.hpp>
+	#include <imgui.h>
 
 /* Collection of global parameters */
 namespace pje {
-	VkResult	result;
-	const char* appName = "Working with Vulkan";
 
-	VkInstance		vulkanInstance;
-	VkSurfaceKHR	surface;
-	VkDevice		logicalDevice;
+	/* Blueprint */
+	struct Context {
+		VkResult	result;
+		const char* appName = "PJEngine";
 
-	VkQueue queueForPrototyping;
+		VkInstance		vulkanInstance;
+		VkSurfaceKHR	surface;
+		VkDevice		logicalDevice;
 
-	VkSwapchainKHR	swapchain;
-	uint32_t		numberOfImagesInSwapchain = 0;
-	std::unique_ptr<VkImageView[]>		imageViews;
-	std::unique_ptr<VkFramebuffer[]>	framebuffers;
+		VkQueue	queueForPrototyping;
 
-	VkShaderModule	shaderModuleBasicVert;
-	VkShaderModule	shaderModuleBasicFrag;
-	std::vector<VkPipelineShaderStageCreateInfo>	shaderStageInfos;
+		VkSwapchainKHR swapchain;
+		uint32_t							numberOfImagesInSwapchain = 0;
+		std::unique_ptr<VkImageView[]>		imageViews;
+		std::unique_ptr<VkFramebuffer[]>	framebuffers;
 
-	VkPipelineLayout	pipelineLayout;
-	VkRenderPass		renderPass;
-	VkPipeline			pipeline;
+		VkShaderModule	shaderModuleBasicVert;
+		VkShaderModule	shaderModuleBasicFrag;
+		std::vector<VkPipelineShaderStageCreateInfo>	shaderStageInfos;
 
-	VkCommandPool						commandPool;
-	std::unique_ptr<VkCommandBuffer[]>	commandBuffers;
+		VkPipelineLayout	pipelineLayout;
+		VkRenderPass		renderPass;
+		VkPipeline			pipeline;
 
-	const VkFormat		outputFormat = VK_FORMAT_B8G8R8A8_UNORM;				// TODO (availability must be checked)
-	const VkClearValue	clearValueDefault = { 0.0f, 0.0f, 1.0f, 0.5f };			// DEFAULT BACKGROUND (RGB) for all rendered images
+		VkCommandPool						commandPool;
+		std::unique_ptr<VkCommandBuffer[]>	commandBuffers;
 
-	VkSemaphore semaphoreSwapchainImageReceived;
-	VkSemaphore semaphoreRenderingFinished;
-	VkFence		fenceRenderFinished;											// 2 States: signaled, unsignaled
+		const VkFormat		outputFormat = VK_FORMAT_B8G8R8A8_UNORM;				// TODO (availability must be checked)
+		const VkClearValue	clearValueDefault = { 0.0f, 0.0f, 1.0f, 0.5f };			// DEFAULT BACKGROUND (RGB) for all rendered images
 
-	GLFWwindow* window;
-	const uint32_t	WINDOW_WIDTH = 1280;
-	const uint32_t	WINDOW_HEIGHT = 720;
+		VkSemaphore	semaphoreSwapchainImageReceived;
+		VkSemaphore	semaphoreRenderingFinished;
+		VkFence		fenceRenderFinished;											// 2 States: signaled, unsignaled
+
+		GLFWwindow* window;
+		const uint32_t	WINDOW_WIDTH = 1280;
+		const uint32_t	WINDOW_HEIGHT = 720;
+	};
+
+	extern Context context;
 }
