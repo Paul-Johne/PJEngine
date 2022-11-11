@@ -136,7 +136,7 @@ int pje::startVulkan() {
 		cout << "\n[DEBUG] Validation Layer for Instance Dispatch Chain NOT found." << endl;
 	}
 
-	/* EXTENSIONS deliver optional functionalities to Vulkan API or layers */
+	/* EXTENSIONS deliver optional functionalities provided by layers, loader or ICD */
 	uint32_t numberOfInstanceExtensions = 0;
 	vkEnumerateInstanceExtensionProperties(nullptr, &numberOfInstanceExtensions, nullptr);
 
@@ -203,6 +203,7 @@ int pje::startVulkan() {
 		return pje::context.result;
 	}
 
+	/* Assign function pointer to extension */
 	vef::vkSetDebugUtilsObjectNameEXT = (PFN_vkSetDebugUtilsObjectNameEXT)(vkGetInstanceProcAddr(pje::context.vulkanInstance, "vkSetDebugUtilsObjectNameEXT"));
 
 	/* VkSurfaceKHR => creates surface based on an existing GLFW Window */
@@ -233,11 +234,9 @@ int pje::startVulkan() {
 		pje::debugPhysicalDeviceStats(physicalDevices[i]);
 	}
 
-	array<float, 1> queuePriorities{
-		1.0f
-	};
+	array<float, 1> queuePriorities { 1.0f };
 
-	/* deviceQueueCreateInfo used for deviceInfo */
+	/* deviceQueueCreateInfo used for deviceInfo => choose ammount of queue of a certain queue family */
 	VkDeviceQueueCreateInfo deviceQueueInfo;
 	deviceQueueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 	deviceQueueInfo.pNext = nullptr;
@@ -247,12 +246,10 @@ int pje::startVulkan() {
 	deviceQueueInfo.pQueuePriorities = queuePriorities.data();
 
 	/* EXTENSIONS on device level */
-	auto deviceExtensions = array{
-		"VK_KHR_swapchain",														// enables Swapchains for real time rendering
-	};
-
+	auto deviceExtensions = array { "VK_KHR_swapchain" };						// enables Swapchains for real time rendering
+	
 	/* all device features for Vulkan 1.1 and upwards */
-	VkPhysicalDeviceFeatures2 coreDeviceFeature{ VkStructureType::VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+	VkPhysicalDeviceFeatures2 coreDeviceFeature { VkStructureType::VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 
 	/* deviceInfo declares what resources will be claimed */
 	/* deviceInfo is necessary for a logical reference    */
@@ -268,16 +265,6 @@ int pje::startVulkan() {
 	deviceInfo.ppEnabledExtensionNames = deviceExtensions.data();
 	deviceInfo.pEnabledFeatures = nullptr;
 
-	/* LOGICAL GPU reference => ! choose the best GPU for your task ! */
-	pje::context.result = vkCreateDevice(physicalDevices[0], &deviceInfo, nullptr, &pje::context.logicalDevice);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at vkCreateDevice" << endl;
-		return pje::context.result;
-	}
-
-	/* Getting Queue of some logical device to assign tasks (CommandBuffer) later */
-	vkGetDeviceQueue(pje::context.logicalDevice, 0, 0, &pje::context.queueForPrototyping);
-
 	/* Checking whether Swapchains are usable or not on physical device */
 	VkBool32 surfaceSupportsSwapchain = false;
 	pje::context.result = vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevices[0], 0, pje::context.surface, &surfaceSupportsSwapchain);
@@ -291,6 +278,16 @@ int pje::startVulkan() {
 		return surfaceSupportsSwapchain;
 	}
 
+	/* LOGICAL GPU reference => ! choose the best GPU for your task ! */
+	pje::context.result = vkCreateDevice(physicalDevices[0], &deviceInfo, nullptr, &pje::context.logicalDevice);
+	if (pje::context.result != VK_SUCCESS) {
+		cout << "Error at vkCreateDevice" << endl;
+		return pje::context.result;
+	}
+
+	/* Getting Queue of some logical device to assign tasks (CommandBuffer) later */
+	vkGetDeviceQueue(pje::context.logicalDevice, 0, 0, &pje::context.queueForPrototyping);
+
 	/* swapchainInfo for building a Swapchain */
 	VkSwapchainCreateInfoKHR swapchainInfo;
 	swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -298,12 +295,12 @@ int pje::startVulkan() {
 	swapchainInfo.flags = 0;
 	swapchainInfo.surface = pje::context.surface;
 	swapchainInfo.minImageCount = 2;												// requires AT LEAST 2 (double buffering)
-	swapchainInfo.imageFormat = pje::context.outputFormat;								// TODO ( choose dynamically )
+	swapchainInfo.imageFormat = pje::context.outputFormat;							// TODO ( choose dynamically )
 	swapchainInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;				// TODO ( choose dynamically )
 	swapchainInfo.imageExtent = VkExtent2D{ pje::context.WINDOW_WIDTH, pje::context.WINDOW_HEIGHT };
 	swapchainInfo.imageArrayLayers = 1;
 	swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	swapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;						// image shared between multiple queues?
+	swapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;						// exclusiv to single queue family at a time
 	swapchainInfo.queueFamilyIndexCount = 0;
 	swapchainInfo.pQueueFamilyIndices = nullptr;
 	swapchainInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;				// no additional transformations
@@ -682,7 +679,7 @@ int pje::startVulkan() {
 		}
 	}
 
-	/* Creating SEMAPHORES for drawFrameOnSurface() */
+	/* SEMAPHORES AND FENCES for drawFrameOnSurface() */
 
 	VkSemaphoreCreateInfo semaphoreInfo;
 	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
