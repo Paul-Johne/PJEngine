@@ -18,13 +18,15 @@ namespace pje {
 		VkResult	result;
 		const char* appName = "PJEngine";
 
-		VkInstance		vulkanInstance;
-		VkSurfaceKHR	surface;
-		VkDevice		logicalDevice;
+		VkInstance						vulkanInstance;
+		VkSurfaceKHR					surface;
+		std::vector<VkPhysicalDevice>	physicalDevices;
+		size_t							choosenPhysicalDevice = 0;
+		VkDevice						logicalDevice;
 
 		VkQueue	queueForPrototyping;
 
-		VkSwapchainKHR swapchain;
+		VkSwapchainKHR						swapchain = VK_NULL_HANDLE;
 		uint32_t							numberOfImagesInSwapchain = 0;
 		std::unique_ptr<VkImageView[]>		imageViews;
 		std::unique_ptr<VkFramebuffer[]>	framebuffers;
@@ -48,8 +50,8 @@ namespace pje {
 		VkFence		fenceRenderFinished;											// 2 States: signaled, unsignaled
 
 		GLFWwindow* window;
-		const uint32_t	WINDOW_WIDTH = 1280;
-		const uint32_t	WINDOW_HEIGHT = 720;
+		uint32_t	windowWidth = 1280;
+		uint32_t	windowHeight = 720;
 	};
 
 	extern Context context;

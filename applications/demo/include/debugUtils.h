@@ -47,9 +47,9 @@ VkResult pje::set_object_name(VkDevice device, T object, const char* name, const
 	}
 }
 
-inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& device) {
+inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& physicalDevice) {
 	VkPhysicalDeviceProperties properties;
-	vkGetPhysicalDeviceProperties(device, &properties);
+	vkGetPhysicalDeviceProperties(physicalDevice, &properties);
 
 	uint32_t apiVersion = properties.apiVersion;
 
@@ -60,22 +60,22 @@ inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& device) {
 
 	/* FEATURES => what kind of shaders can be processed */
 	VkPhysicalDeviceFeatures features;
-	vkGetPhysicalDeviceFeatures(device, &features);
+	vkGetPhysicalDeviceFeatures(physicalDevice, &features);
 	std::cout << "\t\t\t\tFeatures:" << std::endl;
 	std::cout << "\t\t\t\t\tGeometry Shader:\t" << features.geometryShader << std::endl;
 
 	/* memoryProperties => heaps/memory with flags */
 	VkPhysicalDeviceMemoryProperties memoryProperties;
-	vkGetPhysicalDeviceMemoryProperties(device, &memoryProperties);
+	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
 	std::cout << "\t\t\t\tMemory Properties:" << std::endl;
 	std::cout << "\t\t\t\t\tHeaps:\t" << memoryProperties.memoryHeaps->size << std::endl;
 
 	/* GPUs have queues to solve tasks ; their respective attributes are clustered in families */
 	uint32_t numberOfQueueFamilies = 0;
-	vkGetPhysicalDeviceQueueFamilyProperties(device, &numberOfQueueFamilies, nullptr);
+	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numberOfQueueFamilies, nullptr);
 
 	auto familyProperties = std::vector<VkQueueFamilyProperties>(numberOfQueueFamilies);
-	vkGetPhysicalDeviceQueueFamilyProperties(device, &numberOfQueueFamilies, familyProperties.data());
+	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numberOfQueueFamilies, familyProperties.data());
 
 	/* displays attributes of each queue family and the amount of available queues */
 	std::cout << "\t\t\t\tNumber of Queue Families:\t" << numberOfQueueFamilies << std::endl;
@@ -91,7 +91,7 @@ inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& device) {
 
 	/* SurfaceCapabilities => checks access to triple buffering etc. */
 	VkSurfaceCapabilitiesKHR surfaceCapabilities;
-	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, pje::context.surface, &surfaceCapabilities);
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, pje::context.surface, &surfaceCapabilities);
 	std::cout << "\t\t\t\tSurface Capabilities:" << std::endl;
 	std::cout << "\t\t\t\t\tminImageCount:\t\t" << surfaceCapabilities.minImageCount << std::endl;
 	std::cout << "\t\t\t\t\tmaxImageCount:\t\t" << surfaceCapabilities.maxImageCount << std::endl;
@@ -99,9 +99,9 @@ inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& device) {
 
 	/* SurfaceFormats => defines how colors are stored */
 	uint32_t numberOfFormats = 0;
-	vkGetPhysicalDeviceSurfaceFormatsKHR(device, pje::context.surface, &numberOfFormats, nullptr);
+	vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, pje::context.surface, &numberOfFormats, nullptr);
 	auto surfaceFormats = std::vector<VkSurfaceFormatKHR>(numberOfFormats);
-	vkGetPhysicalDeviceSurfaceFormatsKHR(device, pje::context.surface, &numberOfFormats, surfaceFormats.data());
+	vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, pje::context.surface, &numberOfFormats, surfaceFormats.data());
 
 	std::cout << "\t\t\t\tVkFormats: " << std::endl;
 	for (uint32_t i = 0; i < numberOfFormats; i++) {
@@ -110,9 +110,9 @@ inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& device) {
 
 	/* PresentationMode => how CPU and GPU may interact with swapchain images */
 	uint32_t numberOfPresentationModes = 0;
-	vkGetPhysicalDeviceSurfacePresentModesKHR(device, pje::context.surface, &numberOfPresentationModes, nullptr);
+	vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, pje::context.surface, &numberOfPresentationModes, nullptr);
 	auto presentModes = std::vector<VkPresentModeKHR>(numberOfPresentationModes);
-	vkGetPhysicalDeviceSurfacePresentModesKHR(device, pje::context.surface, &numberOfPresentationModes, presentModes.data());
+	vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, pje::context.surface, &numberOfPresentationModes, presentModes.data());
 
 	/* Index 0 is necessary for immediate presentation */
 	std::cout << "\t\t\t\tPresentation Modes:" << std::endl;

@@ -1,8 +1,7 @@
 #version 450
 
+// location out != location in (other address)
 layout(location = 0) in vec3 fragColor;
-
-// location = outputIndex AND NOT attributeIndex as in vertex shader
 layout(location = 0) out vec4 color;
 
 void main() {

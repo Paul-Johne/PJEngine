@@ -17,7 +17,6 @@ namespace pje {
 
 	void createShaderModule(const std::vector<char>& spvCode, VkShaderModule& shaderModule);
 	void addShaderModuleToShaderStages(VkShaderModule newModule, VkShaderStageFlagBits stageType, const char* shaderEntryPoint = "main");
-	void clearShaderStages();
 
 	int startGlfw3(const char* windowName);
 	void stopGlfw3();
