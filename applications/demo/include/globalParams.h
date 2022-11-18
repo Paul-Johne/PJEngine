@@ -43,7 +43,7 @@ namespace pje {
 		std::unique_ptr<VkCommandBuffer[]>	commandBuffers;
 
 		const VkFormat		outputFormat = VK_FORMAT_B8G8R8A8_UNORM;				// civ => VkFormat 44
-		const VkClearValue	clearValueDefault = { 0.0f, 0.0f, 1.0f, 0.5f };			// DEFAULT BACKGROUND (RGB) for all rendered images
+		const VkClearValue	clearValueDefault = { 0.588f, 0.294f, 0.0f, 1.0f };		// DEFAULT BACKGROUND (RGB) for all rendered images
 
 		VkSemaphore	semaphoreSwapchainImageReceived;
 		VkSemaphore	semaphoreRenderingFinished;

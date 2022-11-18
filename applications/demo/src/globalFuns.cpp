@@ -68,7 +68,7 @@ void clearShaderStages() {
 // ################################################################################################################################################################## //
 
 /* cleanupRealtimeRendering should only destroy context's swapchain when the program will be closed */
-void cleanupRealtimeRendering(bool destroySwapchain = false) {
+void cleanupRealtimeRendering(bool reset = false) {
 	/* also automatically done by vkDestroyCommandPool */
 	vkFreeCommandBuffers(pje::context.logicalDevice, pje::context.commandPool, pje::context.numberOfImagesInSwapchain, pje::context.commandBuffers.get());
 	vkDestroyCommandPool(pje::context.logicalDevice, pje::context.commandPool, nullptr);
@@ -79,16 +79,17 @@ void cleanupRealtimeRendering(bool destroySwapchain = false) {
 		vkDestroyImageView(pje::context.logicalDevice, pje::context.imageViews[i], nullptr);
 	}
 
-	vkDestroyPipeline(pje::context.logicalDevice, pje::context.pipeline, nullptr);
-	vkDestroyRenderPass(pje::context.logicalDevice, pje::context.renderPass, nullptr);
-	vkDestroyPipelineLayout(pje::context.logicalDevice, pje::context.pipelineLayout, nullptr);
-
-	if (destroySwapchain)
+	/* should ONLY be used by stopVulkan() */
+	if (!reset) {
+		vkDestroyPipeline(pje::context.logicalDevice, pje::context.pipeline, nullptr);
+		vkDestroyRenderPass(pje::context.logicalDevice, pje::context.renderPass, nullptr);
+		vkDestroyPipelineLayout(pje::context.logicalDevice, pje::context.pipelineLayout, nullptr);
 		vkDestroySwapchainKHR(pje::context.logicalDevice, pje::context.swapchain, nullptr);
+	}
 }
 
 /* Used in startVulkan() and resetRealtimeRendering() */
-void setupRealtimeRendering() {
+void setupRealtimeRendering(bool reset = false) {
 	/* swapchainInfo for building a Swapchain */
 	VkSwapchainCreateInfoKHR swapchainInfo;
 	swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -150,6 +151,7 @@ void setupRealtimeRendering() {
 	/* ImageView gives access to images in swapchainImages */
 	pje::context.imageViews = make_unique<VkImageView[]>(pje::context.numberOfImagesInSwapchain);
 
+	/* Creates image view for each image in swapchain*/
 	for (uint32_t i = 0; i < pje::context.numberOfImagesInSwapchain; i++) {
 		imageViewInfo.image = swapchainImages[i];
 
@@ -162,213 +164,225 @@ void setupRealtimeRendering() {
 	}
 
 	/* Viewport */
-	VkViewport viewport;
-	viewport.x = 0.0f;							// upper left corner
-	viewport.y = 0.0f;							// upper left corner
-	viewport.width = pje::context.windowWidth;
-	viewport.height = pje::context.windowHeight;
-	viewport.minDepth = 0.0f;
-	viewport.maxDepth = 1.0f;
+	VkViewport initViewport;
+	initViewport.x = 0.0f;							// upper left corner
+	initViewport.y = 0.0f;							// upper left corner
+	initViewport.width = pje::context.windowWidth;
+	initViewport.height = pje::context.windowHeight;
+	initViewport.minDepth = 0.0f;
+	initViewport.maxDepth = 1.0f;
 
-	/* Scissor defines what part of the viewport will be used */
-	VkRect2D scissor;
-	scissor.offset = { 0, 0 };
-	scissor.extent = { pje::context.windowWidth,  pje::context.windowHeight };
+	/* Scissor */
+	VkRect2D initScissor;							// defines what part of the viewport will be used
+	initScissor.offset = { 0, 0 };
+	initScissor.extent = { pje::context.windowWidth,  pje::context.windowHeight };
 
-	/* PIPELINE BUILDING */
-	/* Shader pipelines consist out of fixed functions and programmable functions (shaders) */
+	/* Shader Pipelines consist out of fixed functions and programmable functions (shaders) */
+	/* PIPELINE BUILDING - START */
+	if (!reset) {
+		/* viewportInfo => combines viewport and scissor for the pipeline */
+		VkPipelineViewportStateCreateInfo viewportInfo;
+		viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+		viewportInfo.pNext = nullptr;
+		viewportInfo.flags = 0;
+		viewportInfo.viewportCount = 1;							// number of viewport
+		viewportInfo.pViewports = &initViewport;
+		viewportInfo.scissorCount = 1;							// number of scissors
+		viewportInfo.pScissors = &initScissor;
 
-	/* viewportInfo => combines viewport and scissor for the pipeline */
-	VkPipelineViewportStateCreateInfo viewportInfo;
-	viewportInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-	viewportInfo.pNext = nullptr;
-	viewportInfo.flags = 0;
-	viewportInfo.viewportCount = 1;							// number of viewport
-	viewportInfo.pViewports = &viewport;
-	viewportInfo.scissorCount = 1;							// number of scissors
-	viewportInfo.pScissors = &scissor;
+		/* Fixed Function : Input Assembler */
+		VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
+		inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+		inputAssemblyInfo.pNext = nullptr;
+		inputAssemblyInfo.flags = 0;
+		inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;	// how single vertices will be assembled
+		inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
 
-	/* Fixed Function : Input Assembler */
-	VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
-	inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-	inputAssemblyInfo.pNext = nullptr;
-	inputAssemblyInfo.flags = 0;
-	inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;	// how single vertices will be assembled
-	inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
+		/* Usally sizes of vertices and their attributes are defined here
+		 * It has similar tasks to OpenGL's glBufferData(), glVertexAttribPointer() etc. */
+		VkPipelineVertexInputStateCreateInfo vertexInputInfo;
+		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+		vertexInputInfo.pNext = nullptr;
+		vertexInputInfo.flags = 0;
+		vertexInputInfo.vertexBindingDescriptionCount = 0;		// number of pVertexBindingDescriptionS
+		vertexInputInfo.pVertexBindingDescriptions = nullptr;	// binding index for AttributeDescription | stride for sizeof(Vertex) | inputRate to decide between per vertex or per instance
+		vertexInputInfo.vertexAttributeDescriptionCount = 0;	// number of pVertexAttribute
+		vertexInputInfo.pVertexAttributeDescriptions = nullptr;	// location in shader code | binding is binding index of BindingDescription | format defines vertex datatype | offset defines start of the element
 
-	/* Usally sizes of vertices and their attributes are defined here
-	 * It has similar tasks to OpenGL's glBufferData(), glVertexAttribPointer() etc. */
-	VkPipelineVertexInputStateCreateInfo vertexInputInfo;
-	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	vertexInputInfo.pNext = nullptr;
-	vertexInputInfo.flags = 0;
-	vertexInputInfo.vertexBindingDescriptionCount = 0;		// number of pVertexBindingDescriptionS
-	vertexInputInfo.pVertexBindingDescriptions = nullptr;	// binding index for AttributeDescription | stride for sizeof(Vertex) | inputRate to decide between per vertex or per instance
-	vertexInputInfo.vertexAttributeDescriptionCount = 0;	// number of pVertexAttribute
-	vertexInputInfo.pVertexAttributeDescriptions = nullptr;	// location in shader code | binding is binding index of BindingDescription | format defines vertex datatype | offset defines start of the element
+		VkPipelineRasterizationStateCreateInfo rasterizationInfo;
+		rasterizationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+		rasterizationInfo.pNext = nullptr;
+		rasterizationInfo.flags = 0;
+		rasterizationInfo.depthClampEnable = VK_FALSE;					// should vertices outside of the near-far-plane be rendered?
+		rasterizationInfo.rasterizerDiscardEnable = VK_FALSE;			// if true primitives won't be rendered but they may be used for other calculations
+		rasterizationInfo.polygonMode = VK_POLYGON_MODE_FILL;
+		rasterizationInfo.cullMode = VK_CULL_MODE_NONE;					// backface culling
+		rasterizationInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+		rasterizationInfo.depthBiasEnable = VK_FALSE;
+		rasterizationInfo.depthBiasConstantFactor = 0.0f;
+		rasterizationInfo.depthBiasClamp = 0.0f;
+		rasterizationInfo.depthBiasSlopeFactor = 0.0f;
+		rasterizationInfo.lineWidth = 1.0f;
 
-	VkPipelineRasterizationStateCreateInfo rasterizationInfo;
-	rasterizationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-	rasterizationInfo.pNext = nullptr;
-	rasterizationInfo.flags = 0;
-	rasterizationInfo.depthClampEnable = VK_FALSE;					// should vertices outside of the near-far-plane be rendered?
-	rasterizationInfo.rasterizerDiscardEnable = VK_FALSE;			// if true primitives won't be rendered but they may be used for other calculations
-	rasterizationInfo.polygonMode = VK_POLYGON_MODE_FILL;
-	rasterizationInfo.cullMode = VK_CULL_MODE_NONE;					// backface culling
-	rasterizationInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-	rasterizationInfo.depthBiasEnable = VK_FALSE;
-	rasterizationInfo.depthBiasConstantFactor = 0.0f;
-	rasterizationInfo.depthBiasClamp = 0.0f;
-	rasterizationInfo.depthBiasSlopeFactor = 0.0f;
-	rasterizationInfo.lineWidth = 1.0f;
+		// Blending on one image of swapchain (for one framebuffer)
+		//	[Pseudocode]
+		//	if (blendEnable)
+		//		color.rgb = (srcColorBlendFactor * newColor.rgb) [colorBlendOp] (dstColorBlendFactor * oldColor.rgb)
+		//		color.a	  = (srcAlphaBlendFactor * newColor.a)   [alphaBlendOp] (dstAlphaBlendFactor * oldColor.a)
+		//	else
+		//		color = newColor
+		VkPipelineColorBlendAttachmentState colorBlendAttachment;
+		colorBlendAttachment.blendEnable = VK_TRUE;
+		colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+		colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+		colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+		colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+		colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+		colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
 
-	// Blending on one image of swapchain (for one framebuffer)
-	//	[Pseudocode]
-	//	if (blendEnable)
-	//		color.rgb = (srcColorBlendFactor * newColor.rgb) [colorBlendOp] (dstColorBlendFactor * oldColor.rgb)
-	//		color.a	  = (srcAlphaBlendFactor * newColor.a)   [alphaBlendOp] (dstAlphaBlendFactor * oldColor.a)
-	//	else
-	//		color = newColor
-	VkPipelineColorBlendAttachmentState colorBlendAttachment;
-	colorBlendAttachment.blendEnable = VK_TRUE;
-	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
-	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+		VkPipelineColorBlendStateCreateInfo colorBlendInfo;
+		colorBlendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+		colorBlendInfo.pNext = nullptr;
+		colorBlendInfo.flags = 0;
+		colorBlendInfo.logicOpEnable = VK_FALSE;
+		colorBlendInfo.logicOp = VK_LOGIC_OP_NO_OP;
+		colorBlendInfo.attachmentCount = 1;
+		colorBlendInfo.pAttachments = &colorBlendAttachment;
+		fill_n(colorBlendInfo.blendConstants, 4, 0.0f);			// sets rgba to 0.0f
 
-	VkPipelineColorBlendStateCreateInfo colorBlendInfo;
-	colorBlendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-	colorBlendInfo.pNext = nullptr;
-	colorBlendInfo.flags = 0;
-	colorBlendInfo.logicOpEnable = VK_FALSE;
-	colorBlendInfo.logicOp = VK_LOGIC_OP_NO_OP;
-	colorBlendInfo.attachmentCount = 1;
-	colorBlendInfo.pAttachments = &colorBlendAttachment;
-	fill_n(colorBlendInfo.blendConstants, 4, 0.0f);			// sets rgba to 0.0f
+		// pipelineLayoutInfo declares LAYOUTS (Vertex Shader => layout in) and UNIFORMS for compiled shader code
+		VkPipelineLayoutCreateInfo pipelineLayoutInfo;
+		pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		pipelineLayoutInfo.pNext = nullptr;
+		pipelineLayoutInfo.flags = 0;
+		pipelineLayoutInfo.setLayoutCount = 0;
+		pipelineLayoutInfo.pSetLayouts = nullptr;
+		pipelineLayoutInfo.pushConstantRangeCount = 0;
+		pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
-	// pipelineLayoutInfo declares LAYOUTS and UNIFORMS for compiled shader code
-	VkPipelineLayoutCreateInfo pipelineLayoutInfo;
-	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutInfo.pNext = nullptr;
-	pipelineLayoutInfo.flags = 0;
-	pipelineLayoutInfo.setLayoutCount = 0;
-	pipelineLayoutInfo.pSetLayouts = nullptr;
-	pipelineLayoutInfo.pushConstantRangeCount = 0;
-	pipelineLayoutInfo.pPushConstantRanges = nullptr;
+		pje::context.result = vkCreatePipelineLayout(pje::context.logicalDevice, &pipelineLayoutInfo, nullptr, &pje::context.pipelineLayout);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkCreatePipelineLayout" << endl;
+			throw runtime_error("Error at vkCreatePipelineLayout");
+		}
 
-	pje::context.result = vkCreatePipelineLayout(pje::context.logicalDevice, &pipelineLayoutInfo, nullptr, &pje::context.pipelineLayout);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at vkCreatePipelineLayout" << endl;
-		throw runtime_error("Error at vkCreatePipelineLayout");
+		// Multisampling for Antialiasing
+		VkPipelineMultisampleStateCreateInfo multisampleInfo;
+		multisampleInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+		multisampleInfo.pNext = nullptr;
+		multisampleInfo.flags = 0;
+		multisampleInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;		// precision of the sampling
+		multisampleInfo.sampleShadingEnable = VK_FALSE;						// enables sampling
+		multisampleInfo.minSampleShading = 1.0f;
+		multisampleInfo.pSampleMask = nullptr;
+		multisampleInfo.alphaToCoverageEnable = VK_FALSE;
+		multisampleInfo.alphaToOneEnable = VK_FALSE;
+
+		/* ATTACHMENTs */
+
+		// VkAttachmentDescription is held by renderPass for its subpasses (VkAttachmentReference.attachment uses VkAttachmentDescription)
+		VkAttachmentDescription attachmentDescription;
+		attachmentDescription.flags = 0;
+		attachmentDescription.format = pje::context.outputFormat;					// has the same format as the swapchainInfo.imageFormat
+		attachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT;						// for multisampling
+		attachmentDescription.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;					// what happens with the buffer after loading data
+		attachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_STORE;				// what happens with the buffer after storing data
+		attachmentDescription.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;		// for stencilBuffer (discarding certain pixels)
+		attachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;	// for stencilBuffer (discarding certain pixels)
+		attachmentDescription.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;			// buffer as input
+		attachmentDescription.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;		// buffer as output
+
+		VkAttachmentReference attachmentRef;
+		attachmentRef.attachment = 0;										// index of attachment description
+		attachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;	// CONVERTING: desc.initialLayout -> ref.layout -> desc.finalLayout
+
+		// each render pass holds 1+ sub render passes
+		VkSubpassDescription subpassDescription;
+		subpassDescription.flags = 0;
+		subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;	// what kind of computation will be done
+		subpassDescription.inputAttachmentCount = 0;
+		subpassDescription.pInputAttachments = nullptr;							// actual vertices that being used for shader computation
+		subpassDescription.colorAttachmentCount = 1;
+		subpassDescription.pColorAttachments = &attachmentRef;					// which VkAttachmentDescription (attribute bundle) of Renderpass will be used
+		subpassDescription.pResolveAttachments = nullptr;
+		subpassDescription.pDepthStencilAttachment = nullptr;
+		subpassDescription.preserveAttachmentCount = 0;
+		subpassDescription.pPreserveAttachments = nullptr;
+
+		VkSubpassDependency subpassDependency;
+		subpassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+		subpassDependency.dstSubpass = 0;													// works while there is only one subpass in the pipeline
+		subpassDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;		// src scope has to finish that state ..
+		subpassDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;		// .. before dst is allowed to start this state
+		subpassDependency.srcAccessMask = 0;
+		subpassDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		subpassDependency.dependencyFlags = 0;
+
+		/* RENDERPASS */
+
+		/* renderPass represents a single execution of the rendering pipeline */
+		VkRenderPassCreateInfo renderPassInfo;
+		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+		renderPassInfo.pNext = nullptr;
+		renderPassInfo.flags = 0;
+		renderPassInfo.attachmentCount = 1;
+		renderPassInfo.pAttachments = &attachmentDescription;					// for subpassDescription's VkAttachmentReference(s)
+		renderPassInfo.subpassCount = 1;
+		renderPassInfo.pSubpasses = &subpassDescription;						// all subpasses of the current render pass
+		renderPassInfo.dependencyCount = 1;
+		renderPassInfo.pDependencies = &subpassDependency;
+
+		/* Creating RenderPass for VkGraphicsPipelineCreateInfo */
+		pje::context.result = vkCreateRenderPass(pje::context.logicalDevice, &renderPassInfo, nullptr, &pje::context.renderPass);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkCreateRenderPass" << endl;
+			throw runtime_error("Error at vkCreateRenderPass");
+		}
+
+		/* Defining dynamic members for VkGraphicsPipelineCreateInfo */
+		array<VkDynamicState, 2> dynamicStates{
+			VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR
+		};
+
+		VkPipelineDynamicStateCreateInfo dynamicStateInfo;
+		dynamicStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+		dynamicStateInfo.pNext = nullptr;
+		dynamicStateInfo.flags = 0;
+		dynamicStateInfo.dynamicStateCount = dynamicStates.size();
+		dynamicStateInfo.pDynamicStates = dynamicStates.data();
+
+		/* CreateInfo for the actual pipeline */
+		VkGraphicsPipelineCreateInfo pipelineInfo;
+		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+		pipelineInfo.pNext = nullptr;
+		pipelineInfo.flags = 0;
+		pipelineInfo.stageCount = 2;									// number of programmable stages
+		pipelineInfo.pStages = pje::context.shaderStageInfos.data();
+		pipelineInfo.pVertexInputState = &vertexInputInfo;				// input for vertex shader (start of pipeline)
+		pipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
+		pipelineInfo.pTessellationState = nullptr;
+		pipelineInfo.pViewportState = &viewportInfo;
+		pipelineInfo.pRasterizationState = &rasterizationInfo;
+		pipelineInfo.pMultisampleState = &multisampleInfo;
+		pipelineInfo.pDepthStencilState = nullptr;
+		pipelineInfo.pColorBlendState = &colorBlendInfo;
+		pipelineInfo.pDynamicState = &dynamicStateInfo;					// parts being changeable without building new pipeline
+		pipelineInfo.layout = pje::context.pipelineLayout;
+		pipelineInfo.renderPass = pje::context.renderPass;				// hold subpasses and subpass attachments
+		pipelineInfo.subpass = 0;										// index of .subpass
+		pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;				// deriving from other pipeline to reduce loading time
+		pipelineInfo.basePipelineIndex = -1;							// good coding style => invalid index
+
+		pje::context.result = vkCreateGraphicsPipelines(pje::context.logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pje::context.pipeline);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkCreateGraphicsPipelines" << endl;
+			throw runtime_error("Error at vkCreateGraphicsPipelines");
+		}
 	}
+	/* PIPELINE BUILDING - END */
 
-	// Multisampling for Antialiasing
-	VkPipelineMultisampleStateCreateInfo multisampleInfo;
-	multisampleInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-	multisampleInfo.pNext = nullptr;
-	multisampleInfo.flags = 0;
-	multisampleInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;		// precision of the sampling
-	multisampleInfo.sampleShadingEnable = VK_FALSE;						// enables sampling
-	multisampleInfo.minSampleShading = 1.0f;
-	multisampleInfo.pSampleMask = nullptr;
-	multisampleInfo.alphaToCoverageEnable = VK_FALSE;
-	multisampleInfo.alphaToOneEnable = VK_FALSE;
-
-	/* ATTACHMENTs */
-
-	// VkAttachmentDescription is held by renderPass for its subpasses (VkAttachmentReference.attachment uses VkAttachmentDescription)
-	VkAttachmentDescription attachmentDescription;
-	attachmentDescription.flags = 0;
-	attachmentDescription.format = pje::context.outputFormat;					// has the same format as the swapchainInfo.imageFormat
-	attachmentDescription.samples = VK_SAMPLE_COUNT_1_BIT;						// for multisampling
-	attachmentDescription.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;					// what happens with the buffer after loading data
-	attachmentDescription.storeOp = VK_ATTACHMENT_STORE_OP_STORE;				// what happens with the buffer after storing data
-	attachmentDescription.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;		// for stencilBuffer (discarding certain pixels)
-	attachmentDescription.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;	// for stencilBuffer (discarding certain pixels)
-	attachmentDescription.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;			// buffer as input
-	attachmentDescription.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;		// buffer as output
-
-	VkAttachmentReference attachmentRef;
-	attachmentRef.attachment = 0;										// index of attachment description
-	attachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;	// CONVERTING: desc.initialLayout -> ref.layout -> desc.finalLayout
-
-	// each render pass holds 1+ sub render passes
-	VkSubpassDescription subpassDescription;
-	subpassDescription.flags = 0;
-	subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;	// what kind of computation will be done
-	subpassDescription.inputAttachmentCount = 0;
-	subpassDescription.pInputAttachments = nullptr;							// actual vertices that being used for shader computation
-	subpassDescription.colorAttachmentCount = 1;
-	subpassDescription.pColorAttachments = &attachmentRef;
-	subpassDescription.pResolveAttachments = nullptr;
-	subpassDescription.pDepthStencilAttachment = nullptr;
-	subpassDescription.preserveAttachmentCount = 0;
-	subpassDescription.pPreserveAttachments = nullptr;
-
-	VkSubpassDependency subpassDependency;
-	subpassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-	subpassDependency.dstSubpass = 0;													// works while there is only one subpass in the pipeline
-	subpassDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;		// src scope has to finish that state ..
-	subpassDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;		// .. before dst is allowed to start this state
-	subpassDependency.srcAccessMask = 0;
-	subpassDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-	subpassDependency.dependencyFlags = 0;
-
-	/* RENDERPASS */
-
-	/* renderPass represents a single execution of the rendering pipeline */
-	VkRenderPassCreateInfo renderPassInfo;
-	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	renderPassInfo.pNext = nullptr;
-	renderPassInfo.flags = 0;
-	renderPassInfo.attachmentCount = 1;
-	renderPassInfo.pAttachments = &attachmentDescription;					// for subpassDescription's VkAttachmentReference(s)
-	renderPassInfo.subpassCount = 1;
-	renderPassInfo.pSubpasses = &subpassDescription;						// "all" subpasses of the current render pass
-	renderPassInfo.dependencyCount = 1;
-	renderPassInfo.pDependencies = &subpassDependency;
-
-	/* Creating RenderPass for VkGraphicsPipelineCreateInfo */
-	pje::context.result = vkCreateRenderPass(pje::context.logicalDevice, &renderPassInfo, nullptr, &pje::context.renderPass);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at vkCreateRenderPass" << endl;
-		throw runtime_error("Error at vkCreateRenderPass");
-	}
-
-	/* PIPELINE */
-
-	/* CreateInfo for the actual pipeline */
-	VkGraphicsPipelineCreateInfo pipelineInfo;
-	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pipelineInfo.pNext = nullptr;
-	pipelineInfo.flags = 0;
-	pipelineInfo.stageCount = 2;								// number of programmable stages
-	pipelineInfo.pStages = pje::context.shaderStageInfos.data();
-	pipelineInfo.pVertexInputState = &vertexInputInfo;
-	pipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
-	pipelineInfo.pTessellationState = nullptr;
-	pipelineInfo.pViewportState = &viewportInfo;
-	pipelineInfo.pRasterizationState = &rasterizationInfo;
-	pipelineInfo.pMultisampleState = &multisampleInfo;
-	pipelineInfo.pDepthStencilState = nullptr;
-	pipelineInfo.pColorBlendState = &colorBlendInfo;
-	pipelineInfo.pDynamicState = nullptr;						// parts being changeable without building new pipeline
-	pipelineInfo.layout = pje::context.pipelineLayout;
-	pipelineInfo.renderPass = pje::context.renderPass;
-	pipelineInfo.subpass = 0;									// index of .subpass
-	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;			// deriving from other pipeline to reduce loading time
-	pipelineInfo.basePipelineIndex = -1;						// good coding style => invalid index
-
-	pje::context.result = vkCreateGraphicsPipelines(pje::context.logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pje::context.pipeline);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at vkCreateGraphicsPipelines" << endl;
-		throw runtime_error("Error at vkCreateGraphicsPipelines");
-	}
-
-	/* Framebuffer => connects imageView to attachment (Vulkan communication buffer) */
+	/* Framebuffer => bridge between CommandBuffer and Rendertargets/Image Views (Vulkan communication buffer) */
 	pje::context.framebuffers = make_unique<VkFramebuffer[]>(pje::context.numberOfImagesInSwapchain);
 	for (uint32_t i = 0; i < pje::context.numberOfImagesInSwapchain; i++) {
 		VkFramebufferCreateInfo framebufferInfo;
@@ -379,7 +393,7 @@ void setupRealtimeRendering() {
 		framebufferInfo.attachmentCount = 1;							// one framebuffer may store multiple imageViews
 		framebufferInfo.pAttachments = &(pje::context.imageViews[i]);	// imageView => reference to image in swapchain
 		framebufferInfo.width = pje::context.windowWidth;				// dimension
-		framebufferInfo.height = pje::context.windowHeight;			// dimension
+		framebufferInfo.height = pje::context.windowHeight;				// dimension
 		framebufferInfo.layers = 1;										// dimension
 
 		pje::context.result = vkCreateFramebuffer(pje::context.logicalDevice, &framebufferInfo, nullptr, &pje::context.framebuffers[i]);
@@ -445,11 +459,18 @@ void setupRealtimeRendering() {
 			throw runtime_error("Error at vkBeginCommandBuffer");
 		}
 
-		renderPassBeginInfo.framebuffer = pje::context.framebuffers[i];	// framebuffer that the current command buffer is associated with
-		vkCmdBeginRenderPass(pje::context.commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);		// connects CommandBuffer to Framebuffer ; CommandBuffer knows RenderPass
+		renderPassBeginInfo.framebuffer = pje::context.framebuffers[i];											// framebuffer that the current command buffer is associated with
+		vkCmdBeginRenderPass(pje::context.commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);	// connects CommandBuffer to Framebuffer ; CommandBuffer knows RenderPass
 
 		// BIND => decide for an pipeline and use it for graphical calculation
 		vkCmdBindPipeline(pje::context.commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pje::context.pipeline);
+
+		// SET dynamic states for vkCmdDraw
+		VkViewport viewport { 0.0f, 0.0f, pje::context.windowWidth, pje::context.windowHeight, 0.0f, 1.0f };
+		vkCmdSetViewport(pje::context.commandBuffers[i], 0, 1, &viewport);
+		VkRect2D scissor{ {0, 0}, {pje::context.windowWidth, pje::context.windowHeight} };
+		vkCmdSetScissor(pje::context.commandBuffers[i], 0, 1, &scissor);
+
 		// DRAW => drawing on swapchain images
 		vkCmdDraw(pje::context.commandBuffers[i], 3, 1, 0, 1);				// TODO (hardcoded for current shader)
 
@@ -486,8 +507,8 @@ void resetRealtimeRendering(GLFWwindow* window, int width, int height) {
 
 	vkDeviceWaitIdle(pje::context.logicalDevice);
 
-	cleanupRealtimeRendering(false);
-	setupRealtimeRendering();
+	cleanupRealtimeRendering(true);
+	setupRealtimeRendering(true);
 	vkDestroySwapchainKHR(pje::context.logicalDevice, oldSwapchain, nullptr);
 }
 
@@ -802,7 +823,7 @@ void pje::stopVulkan() {
 	vkDestroySemaphore(pje::context.logicalDevice, pje::context.semaphoreSwapchainImageReceived, nullptr);
 	vkDestroySemaphore(pje::context.logicalDevice, pje::context.semaphoreRenderingFinished, nullptr);
 
-	cleanupRealtimeRendering(true); // destroys context.swapchain as well
+	cleanupRealtimeRendering();
 
 	vkDestroyShaderModule(pje::context.logicalDevice, pje::context.shaderModuleBasicVert, nullptr);
 	vkDestroyShaderModule(pje::context.logicalDevice, pje::context.shaderModuleBasicFrag, nullptr);
