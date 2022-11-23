@@ -26,27 +26,6 @@ namespace pje {
 
 // ################################################################################################################################################################## //
 
-template <typename T, bool enable_debug_func>
-VkResult pje::set_object_name(VkDevice device, T object, const char* name, const void* next) {
-    // do nothing in release mode
-    if constexpr (enable_debug_func) {
-		const VkDebugUtilsObjectNameInfoEXT name_info{
-			VkStructureType::VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-			next,
-			get_object_type<T>(),
-			reinterpret_cast<std::uint64_t>(object),
-			name
-		};
-
-		auto res = vef::vkSetDebugUtilsObjectNameEXT(device, &name_info);
-
-		return res;
-	}
-	else {
-		return VK_SUCCESS;
-	}
-}
-
 inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& physicalDevice) {
 	VkPhysicalDeviceProperties properties;
 	vkGetPhysicalDeviceProperties(physicalDevice, &properties);
@@ -56,7 +35,6 @@ inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& physicalDevice) {
 	std::cout << "[OS] Available GPU:\t\t" << properties.deviceName << std::endl;
 	std::cout << "\t\t\t\tVulkan API Version:\t" << VK_VERSION_MAJOR(apiVersion) << "." << VK_VERSION_MINOR(apiVersion) << "." << VK_VERSION_PATCH(apiVersion) << std::endl;
 	std::cout << "\t\t\t\tDevice Type:\t\t" << properties.deviceType << std::endl;
-	std::cout << "\t\t\t\tdiscreteQueuePriorities:\t" << properties.limits.discreteQueuePriorities << std::endl;
 
 	/* FEATURES => what kind of shaders can be processed */
 	VkPhysicalDeviceFeatures features;
@@ -118,6 +96,27 @@ inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& physicalDevice) {
 	std::cout << "\t\t\t\tPresentation Modes:" << std::endl;
 	for (uint32_t i = 0; i < numberOfPresentationModes; i++) {
 		std::cout << "\t\t\t\t\tIndex:\t\t" << presentModes[i] << std::endl;
+	}
+}
+
+template <typename T, bool enable_debug_func>
+VkResult pje::set_object_name(VkDevice device, T object, const char* name, const void* next) {
+    // do nothing in release mode
+    if constexpr (enable_debug_func) {
+		const VkDebugUtilsObjectNameInfoEXT name_info{
+			VkStructureType::VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+			next,
+			get_object_type<T>(),
+			reinterpret_cast<std::uint64_t>(object),
+			name
+		};
+
+		auto res = vef::vkSetDebugUtilsObjectNameEXT(device, &name_info);
+
+		return res;
+	}
+	else {
+		return VK_SUCCESS;
 	}
 }
 

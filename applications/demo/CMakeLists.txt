@@ -42,12 +42,11 @@ find_package(glm REQUIRED)
 # linking libraries in libraries folder
 target_link_libraries(demo PRIVATE
     # External Dependencies => Vulkan, GLFW and GLM
-    # glfw3::glfw3 cannot find target => glfw for target glfw3
     Vulkan::Vulkan
     glfw
     glm::glm
 
-    # Internal Dependencies => ImGui will be included directly with demo_lib
+    # Internal Dependencies => ImGui will be included directly via demo_lib
     demo_lib
 )
 

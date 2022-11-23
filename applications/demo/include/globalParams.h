@@ -21,8 +21,15 @@ namespace pje {
 		VkInstance						vulkanInstance;
 		VkSurfaceKHR					surface;
 		std::vector<VkPhysicalDevice>	physicalDevices;
-		size_t							choosenPhysicalDevice = 0;
 		VkDevice						logicalDevice;
+
+		VkPhysicalDeviceType			preferredPhysicalDeviceType = VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
+		std::vector<VkQueueFlagBits>	neededFamilyQueueAttributes = { VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT };
+		uint32_t						neededSurfaceImages = 2;
+		VkPresentModeKHR				neededPresentationMode = VkPresentModeKHR::VK_PRESENT_MODE_IMMEDIATE_KHR;
+
+		uint32_t						choosenPhysicalDevice;						// dynamically by selectGPU()
+		uint32_t						choosenQueueFamily;							// dynamically by selectGPU()
 
 		VkQueue	queueForPrototyping;
 
@@ -31,8 +38,8 @@ namespace pje {
 		std::unique_ptr<VkImageView[]>		imageViews;
 		std::unique_ptr<VkFramebuffer[]>	framebuffers;
 
-		VkShaderModule	shaderModuleBasicVert;
-		VkShaderModule	shaderModuleBasicFrag;
+		VkShaderModule									shaderModuleBasicVert;
+		VkShaderModule									shaderModuleBasicFrag;
 		std::vector<VkPipelineShaderStageCreateInfo>	shaderStageInfos;
 
 		VkPipelineLayout	pipelineLayout;
@@ -42,17 +49,29 @@ namespace pje {
 		VkCommandPool						commandPool;
 		std::unique_ptr<VkCommandBuffer[]>	commandBuffers;
 
-		const VkFormat		outputFormat = VK_FORMAT_B8G8R8A8_UNORM;				// civ => VkFormat 44
-		const VkClearValue	clearValueDefault = { 0.588f, 0.294f, 0.0f, 1.0f };		// DEFAULT BACKGROUND (RGB) for all rendered images
+		const VkFormat		outputFormat = VK_FORMAT_B8G8R8A8_UNORM;				// VkFormat 44
+		const VkClearValue	clearValueDefault = { 0.588f, 0.294f, 0.0f, 1.0f };		// DEFAULT BACKGROUND
 
 		VkSemaphore	semaphoreSwapchainImageReceived;
 		VkSemaphore	semaphoreRenderingFinished;
 		VkFence		fenceRenderFinished;											// 2 States: signaled, unsignaled
 
 		GLFWwindow* window;
+		bool		isWindowMinimized = false;
 		uint32_t	windowWidth = 1280;
 		uint32_t	windowHeight = 720;
 	};
 
 	extern Context context;
+
+	class Vertex {
+	public:
+		glm::vec2 position;
+		glm::vec3 color;
+
+		Vertex(glm::vec2 position, glm::vec3 color) : 
+			position(position), color(color) {}
+	};
+
+	extern std::vector<Vertex> debugTriangle;
 }

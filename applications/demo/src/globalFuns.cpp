@@ -103,7 +103,7 @@ void setupRealtimeRendering(bool reset = false) {
 	swapchainInfo.imageArrayLayers = 1;
 	swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	swapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;						// exclusiv to single queue family at a time
-	swapchainInfo.queueFamilyIndexCount = 0;
+	swapchainInfo.queueFamilyIndexCount = 0;										// enables access across multiple queue families => .imageSharingMode = VK_SHARING_MODE_CONCURRENT
 	swapchainInfo.pQueueFamilyIndices = nullptr;
 	swapchainInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;				// no additional transformations
 	swapchainInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;				// no see through images
@@ -199,7 +199,7 @@ void setupRealtimeRendering(bool reset = false) {
 		inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
 
 		/* Usally sizes of vertices and their attributes are defined here
-		 * It has similar tasks to OpenGL's glBufferData(), glVertexAttribPointer() etc. */
+		 * It has similar tasks to OpenGL's glBufferData(), glVertexAttribPointer() etc. (Vertex Shader => layout in) */
 		VkPipelineVertexInputStateCreateInfo vertexInputInfo;
 		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 		vertexInputInfo.pNext = nullptr;
@@ -251,7 +251,7 @@ void setupRealtimeRendering(bool reset = false) {
 		colorBlendInfo.pAttachments = &colorBlendAttachment;
 		fill_n(colorBlendInfo.blendConstants, 4, 0.0f);			// sets rgba to 0.0f
 
-		// pipelineLayoutInfo declares LAYOUTS (Vertex Shader => layout in) and UNIFORMS for compiled shader code
+		// pipelineLayoutInfo declares LAYOUTS and UNIFORMS for compiled shader code
 		VkPipelineLayoutCreateInfo pipelineLayoutInfo;
 		pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 		pipelineLayoutInfo.pNext = nullptr;
@@ -407,8 +407,8 @@ void setupRealtimeRendering(bool reset = false) {
 	VkCommandPoolCreateInfo commandPoolInfo;
 	commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	commandPoolInfo.pNext = nullptr;
-	commandPoolInfo.flags = 0;						// reset record of single frame buffer | set to buffer to 'transient' for optimisation
-	commandPoolInfo.queueFamilyIndex = 0;			// must be the same as in VkDeviceQueueCreateInfo of the logical device & Queue Family 'VK_QUEUE_GRAPHICS_BIT' must be 1
+	commandPoolInfo.flags = 0;												// reset record of single frame buffer | set to buffer to 'transient' for optimisation
+	commandPoolInfo.queueFamilyIndex = pje::context.choosenQueueFamily;		// must be the same as in VkDeviceQueueCreateInfo of the logical device & Queue Family 'VK_QUEUE_GRAPHICS_BIT' must be 1
 
 	pje::context.result = vkCreateCommandPool(pje::context.logicalDevice, &commandPoolInfo, nullptr, &pje::context.commandPool);
 	if (pje::context.result != VK_SUCCESS) {
@@ -487,8 +487,13 @@ void setupRealtimeRendering(bool reset = false) {
 
 /* GLFW: Callback for GLFWwindowsizefun */
 void resetRealtimeRendering(GLFWwindow* window, int width, int height) {
-	if (width <= 0 || height <= 0) 
+	if (width <= 0 || height <= 0) {
+		pje::context.isWindowMinimized = true;
 		return;
+	}
+	else if (pje::context.isWindowMinimized) {
+		pje::context.isWindowMinimized = false;
+	}
 
 	VkSurfaceCapabilitiesKHR capabilities;
 	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
@@ -544,9 +549,152 @@ int pje::startGlfw3(const char* windowName) {
 void pje::stopGlfw3() {
 	glfwDestroyWindow(pje::context.window);
 	glfwTerminate();
+
+	cout << "[DEBUG] GLFW ressources cleaned up." << endl;
 }
 
 // ################################################################################################################################################################## //
+
+/* Vulkan : sets pje::context.choosenPhysicalDevice based on needed attributes */
+void selectGPU(const vector<VkPhysicalDevice> physicalDevices, VkPhysicalDeviceType preferredType, const vector<VkQueueFlagBits> neededFamilyQueueAttributes, uint32_t neededSurfaceImages, VkFormat imageColorFormat, VkPresentModeKHR neededPresentationMode) {
+	if (physicalDevices.size() == 0)
+		throw runtime_error("[ERROR] No GPU was found on this computer.");
+	
+	const uint8_t AMOUNT_OF_REQUIREMENTS = 5;
+
+	for (const auto& physicalDevice : physicalDevices) {
+		uint8_t requirementCounter = 0;
+
+		VkPhysicalDeviceProperties props;
+		vkGetPhysicalDeviceProperties(physicalDevice, &props);
+
+		cout << "\n[OS] GPU [" << props.deviceName << "] was found." << endl;
+		if (props.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+			cout << "[OS] GPU is VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU." << endl;
+		if (props.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
+			cout << "[OS] GPU is VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU." << endl;
+
+		if (props.deviceType == preferredType) {
+			++requirementCounter;
+			cout << "[OS] Preferred device type was found." << endl;
+		}
+		else {
+			cout << "\t[OS] Preferred device type wasn't found." << endl;
+			break;
+		}
+
+		{
+			uint8_t counter(0);
+			bool foundQueueFamily = false;
+
+			uint32_t numberOfQueueFamilies = 0;
+			vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numberOfQueueFamilies, nullptr);
+
+			auto queueFamilyProps = std::vector<VkQueueFamilyProperties>(numberOfQueueFamilies);
+			vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &numberOfQueueFamilies, queueFamilyProps.data());
+
+			for (uint32_t i = 0; i < numberOfQueueFamilies; i++) {					// inspecting each queue family of that device
+				for (const auto& attribute : neededFamilyQueueAttributes) {			// one queue family has to fulfill all attributes on its own
+					if ((attribute & queueFamilyProps[i].queueFlags) != 0)			// check : bitwise AND
+						++counter;
+				}
+				if (counter == neededFamilyQueueAttributes.size()) {				// check : does the current family queue satisfy all requirements?
+					foundQueueFamily = true;
+					pje::context.choosenQueueFamily = i;
+					break;
+				}
+				else {
+					counter = 0;
+				}
+			}
+
+			if (!foundQueueFamily) {
+				cout << "\t[OS] No suitable queue family was found." << endl;
+				break;
+			}
+			else {
+				++requirementCounter;
+				cout << "[OS] pje::context.choosenQueueFamily was set to : " << pje::context.choosenQueueFamily << endl;
+			}
+		}
+
+		{
+			VkSurfaceCapabilitiesKHR surfaceCapabilities;
+			vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, pje::context.surface, &surfaceCapabilities);
+
+			if (surfaceCapabilities.minImageCount >= neededSurfaceImages) {
+				++requirementCounter;
+				cout << "[OS] Physical device supports needed amount of surface images" << endl;
+			}
+			else {
+				cout << "\t[OS] Physical device cannot provide the needed amount of surface images" << endl;
+				break;
+			}
+		}
+
+		{
+			uint32_t numberOfFormats = 0;
+			vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, pje::context.surface, &numberOfFormats, nullptr);
+			auto surfaceFormats = std::vector<VkSurfaceFormatKHR>(numberOfFormats);
+			vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, pje::context.surface, &numberOfFormats, surfaceFormats.data());
+
+			bool foundVkFormat = false;
+
+			for (uint32_t i = 0; i < numberOfFormats; i++) {
+				if (surfaceFormats[i].format == imageColorFormat) {
+					foundVkFormat = true;
+					break;
+				}
+			}
+
+			if (!foundVkFormat) {
+				cout << "\t[OS] Required VkFormat wasn't provided by the physical device" << endl;
+				break;
+			}
+			else {
+				++requirementCounter;
+				cout << "[OS] Physical device supports required VkFormat" << endl;
+			}
+		}
+
+		{
+			uint32_t numberOfPresentationModes = 0;
+			vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, pje::context.surface, &numberOfPresentationModes, nullptr);
+			auto presentModes = std::vector<VkPresentModeKHR>(numberOfPresentationModes);
+			vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, pje::context.surface, &numberOfPresentationModes, presentModes.data());
+
+			bool foundPresentMode = false;
+
+			for (uint32_t i = 0; i < numberOfPresentationModes; i++) {
+				if (presentModes[i] == neededPresentationMode) {
+					foundPresentMode = true;
+					
+					break;
+				}
+			}
+
+			if (!foundPresentMode) {
+				cout << "\t[OS] Required VkPresentModeKHR wasn't provided by the physical device" << endl;
+				break;
+			}
+			else {
+				++requirementCounter;
+				cout << "[OS] Physical device supports required VkPresentModeKHR" << endl;
+			}
+		}
+
+		if (requirementCounter == AMOUNT_OF_REQUIREMENTS) {
+			cout << "[OS] PJEngine is choosing " << props.deviceName << ".\n" << endl;
+			pje::context.choosenPhysicalDevice = 0;
+			return;
+		}
+		else {
+			cout << "\t[OS] PJEngine declined " << props.deviceName << ".\n" << endl;
+		}
+	}
+
+	throw runtime_error("[ERROR] No suitable GPU was found for PJEngine.");
+}
 
 /* Vulkan : pje::context setup */
 int pje::startVulkan() {
@@ -684,6 +832,17 @@ int pje::startVulkan() {
 		pje::debugPhysicalDeviceStats(pje::context.physicalDevices[i]);
 	}
 
+	/* ########## Decides on the right GPU and QueueFamily for PJEngine ########## */
+	/* Sets pje::context.choosenPhysicalDevice and pje::context.choosenQueueFamily */
+	selectGPU(
+		pje::context.physicalDevices,
+		pje::context.preferredPhysicalDeviceType,
+		pje::context.neededFamilyQueueAttributes,
+		pje::context.neededSurfaceImages,
+		pje::context.outputFormat,
+		pje::context.neededPresentationMode
+	);
+
 	array<float, 1> queuePriorities { 1.0f };
 
 	/* deviceQueueCreateInfo used for deviceInfo => choose ammount of queue of a certain queue family */
@@ -691,12 +850,12 @@ int pje::startVulkan() {
 	deviceQueueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 	deviceQueueInfo.pNext = nullptr;
 	deviceQueueInfo.flags = 0;
-	deviceQueueInfo.queueFamilyIndex = 0;										// TODO ( analyse available families before setting one )
-	deviceQueueInfo.queueCount = 1;												// TODO ( analyse available queues in family first )
+	deviceQueueInfo.queueFamilyIndex = pje::context.choosenQueueFamily;		// TODO ( analyse available families before setting one )
+	deviceQueueInfo.queueCount = 1;											// TODO ( analyse available queues in family first )
 	deviceQueueInfo.pQueuePriorities = queuePriorities.data();
 
 	/* EXTENSIONS on device level */
-	auto deviceExtensions = array { "VK_KHR_swapchain" };						// Swapchains => Real Time Rendering
+	auto deviceExtensions = array { "VK_KHR_swapchain" };					// Swapchains => Real Time Rendering
 	
 	/* all device features for Vulkan 1.1 and upwards */
 	VkPhysicalDeviceFeatures2 coreDeviceFeature { VkStructureType::VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
@@ -768,7 +927,7 @@ int pje::startVulkan() {
 	/* Wraping Shader Modules in a distinct CreateInfo for the Shaderpipeline and adding them to engine's stageInfos */
 	pje::addShaderModuleToShaderStages(pje::context.shaderModuleBasicVert, VK_SHADER_STAGE_VERTEX_BIT);
 	pje::addShaderModuleToShaderStages(pje::context.shaderModuleBasicFrag, VK_SHADER_STAGE_FRAGMENT_BIT);
-	cout << "\n[DEBUG] Programable Pipeline Stages in pje::shaderStageInfos: " << pje::context.shaderStageInfos.size() << endl;
+	cout << "[DEBUG] Programable Pipeline Stages in pje::shaderStageInfos: " << pje::context.shaderStageInfos.size() << endl;
 
 	/* ############## SETUP FOR REAL TIME RENDERING ############## */
 
@@ -792,6 +951,7 @@ int pje::startVulkan() {
 		return pje::context.result;
 	}
 
+	/* Creates signaled fence */
 	VkFenceCreateInfo fenceInfo;
 	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceInfo.pNext = nullptr;
@@ -832,95 +992,100 @@ void pje::stopVulkan() {
 	vkDestroyDevice(pje::context.logicalDevice, nullptr);
 	vkDestroySurfaceKHR(pje::context.vulkanInstance, pje::context.surface, nullptr);
 	vkDestroyInstance(pje::context.vulkanInstance, nullptr);
+
+	cout << "[DEBUG] Vulkan API ressources cleaned up." << endl;
 }
 
 // ################################################################################################################################################################## //
 
 /* Used in loopVisualizationOf() */
-/* drawFrameOnSurface has 3 steps => using semaphores
+/* 
+ * drawFrameOnSurface has 3 steps => using semaphores
  * 1) get an image from swapchain
  * 2) render inside of selected image
  * 3) give back image to swapchain to present it
  * 
- *    Fences => CPU semaphore | context.semaphore => GPU semaphore
+ *    Fences => CPU semaphore | VkSemaphores => GPU semaphore
  */
 void drawFrameOnSurface() {
-	/* CPU waits here for signaled fence(s)*/
-	pje::context.result = vkWaitForFences(
-		pje::context.logicalDevice,
-		1,
-		&pje::context.fenceRenderFinished,
-		VK_TRUE,
-		numeric_limits<uint64_t>::max()
-	);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at vkWaitForFences" << endl;
-		return;
-	}
+	if (!pje::context.isWindowMinimized) {
+		/* CPU waits here for signaled fence(s)*/
+		pje::context.result = vkWaitForFences(
+			pje::context.logicalDevice,
+			1,
+			&pje::context.fenceRenderFinished,
+			VK_TRUE,
+			numeric_limits<uint64_t>::max()
+		);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkWaitForFences" << endl;
+			return;
+		}
 
-	/* Unsignals fence(s) */
-	pje::context.result = vkResetFences(
-		pje::context.logicalDevice,
-		1,
-		&pje::context.fenceRenderFinished
-	);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at vkResetFences" << endl;
-		return;
-	}
+		/* Unsignals fence(s) */
+		pje::context.result = vkResetFences(
+			pje::context.logicalDevice,
+			1,
+			&pje::context.fenceRenderFinished
+		);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkResetFences" << endl;
+			return;
+		}
+	
+		uint32_t imageIndex;
+		vkAcquireNextImageKHR(
+			pje::context.logicalDevice,
+			pje::context.swapchain,
+			numeric_limits<uint64_t>::max(),				// timeout in ns before abort
+			pje::context.semaphoreSwapchainImageReceived,	// semaphore	=> only visible on GPU side
+			VK_NULL_HANDLE,									// fences		=> like semaphores ; usable inside of Cpp Code
+			&imageIndex
+		);
 
-	uint32_t imageIndex;
-	vkAcquireNextImageKHR(
-		pje::context.logicalDevice,
-		pje::context.swapchain,
-		numeric_limits<uint64_t>::max(),				// timeout in ns before abort
-		pje::context.semaphoreSwapchainImageReceived,	// semaphore	=> only visible on GPU side
-		VK_NULL_HANDLE,									// fences		=> like semaphores ; usable inside of Cpp Code
-		&imageIndex
-	);
+		array<VkPipelineStageFlags, 1> waitStageMask{
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT	// allows async rendering behavior
+		};
 
-	array<VkPipelineStageFlags, 1> waitStageMask{
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT	// allows async rendering behavior
-	};
+		VkSubmitInfo submitInfo;
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.pNext = nullptr;
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = &pje::context.semaphoreSwapchainImageReceived;
+		submitInfo.pWaitDstStageMask = waitStageMask.data();
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &pje::context.commandBuffers[imageIndex];
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &pje::context.semaphoreRenderingFinished;	// which semaphores will be triggered
 
-	VkSubmitInfo submitInfo;
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.pNext = nullptr;
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &pje::context.semaphoreSwapchainImageReceived;
-	submitInfo.pWaitDstStageMask = waitStageMask.data();
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &pje::context.commandBuffers[imageIndex];
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &pje::context.semaphoreRenderingFinished;		// which semaphores will be triggered
+		/* Submitting commandBuffer to queue => ACTUAL RENDERING */
+		/* Fence must be unsignaled to proceed and signals fence */
+		pje::context.result = vkQueueSubmit(
+			pje::context.queueForPrototyping,
+			1,
+			&submitInfo,
+			pje::context.fenceRenderFinished
+		);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkQueueSubmit" << endl;
+			return;
+		}
 
-	/* Submitting commandBuffer to queue => ACTUAL RENDERING */
-	/* Fence must be unsignaled to proceed and signals fence */
-	pje::context.result = vkQueueSubmit(
-		pje::context.queueForPrototyping,
-		1,
-		&submitInfo,
-		pje::context.fenceRenderFinished
-	);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at vkQueueSubmit" << endl;
-		return;
-	}
+		VkPresentInfoKHR presentInfo;
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		presentInfo.pNext = nullptr;
+		presentInfo.waitSemaphoreCount = 1;
+		presentInfo.pWaitSemaphores = &pje::context.semaphoreRenderingFinished;		// waiting for rendering to finish before presenting
+		presentInfo.swapchainCount = 1;
+		presentInfo.pSwapchains = &pje::context.swapchain;
+		presentInfo.pImageIndices = &imageIndex;
+		presentInfo.pResults = nullptr;												// error code from different swapchains possible
 
-	VkPresentInfoKHR presentInfo;
-	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-	presentInfo.pNext = nullptr;
-	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &pje::context.semaphoreRenderingFinished;	// waiting for rendering to finish before presenting
-	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = &pje::context.swapchain;
-	presentInfo.pImageIndices = &imageIndex;
-	presentInfo.pResults = nullptr;											// error code from different swapchains possible
-
-	pje::context.result = vkQueuePresentKHR(pje::context.queueForPrototyping, &presentInfo);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at vkQueuePresentKHR" << endl;
-		return;
+		pje::context.result = vkQueuePresentKHR(pje::context.queueForPrototyping, &presentInfo);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkQueuePresentKHR" << endl;
+			return;
+		}
 	}
 }
 
