@@ -1008,8 +1008,8 @@ void pje::stopVulkan() {
  *    Fences => CPU semaphore | VkSemaphores => GPU semaphore
  */
 void drawFrameOnSurface() {
-	if (!pje::context.isWindowMinimized) {
 		/* CPU waits here for signaled fence(s)*/
+	if (!pje::context.isWindowMinimized) {
 		pje::context.result = vkWaitForFences(
 			pje::context.logicalDevice,
 			1,
@@ -1032,9 +1032,9 @@ void drawFrameOnSurface() {
 			cout << "Error at vkResetFences" << endl;
 			return;
 		}
-	
+
 		uint32_t imageIndex;
-		vkAcquireNextImageKHR(
+		pje::context.result = vkAcquireNextImageKHR(
 			pje::context.logicalDevice,
 			pje::context.swapchain,
 			numeric_limits<uint64_t>::max(),				// timeout in ns before abort
@@ -1042,6 +1042,9 @@ void drawFrameOnSurface() {
 			VK_NULL_HANDLE,									// fences		=> like semaphores ; usable inside of Cpp Code
 			&imageIndex
 		);
+		if (pje::context.result != VK_SUCCESS) {			// VK_SUBOPTIMAL etc. should be handled here
+			throw runtime_error("Could not acquire image from swapchain.");
+		}
 
 		array<VkPipelineStageFlags, 1> waitStageMask{
 			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT	// allows async rendering behavior

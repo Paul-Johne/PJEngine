@@ -31,6 +31,10 @@ set_property(
         CXX_STANDARD 17
 )
 
+if(MSVC)
+    target_compile_options(demo PUBLIC "/Zc:__cplusplus")
+endif()
+
 # enables <*.h> instead of using "*.h"
 target_include_directories(demo PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 

@@ -3,7 +3,6 @@
 using namespace std;
 
 int main() {
-	// MSVC isn't working correctly with __cplusplus
 	cout << "C++-Version: " << __cplusplus << endl;
 
 	int res;
