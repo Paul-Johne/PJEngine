@@ -49,7 +49,7 @@ namespace pje {
 		VkCommandPool						commandPool;
 		std::unique_ptr<VkCommandBuffer[]>	commandBuffers;
 
-		const VkFormat		outputFormat = VK_FORMAT_B8G8R8A8_UNORM;				// VkFormat 44
+		const VkFormat		outputFormat = VkFormat::VK_FORMAT_B8G8R8A8_UNORM;		// VkFormat 44
 		const VkClearValue	clearValueDefault = { 0.588f, 0.294f, 0.0f, 1.0f };		// DEFAULT BACKGROUND
 
 		VkSemaphore	semaphoreSwapchainImageReceived;
@@ -61,7 +61,6 @@ namespace pje {
 		uint32_t	windowWidth = 1280;
 		uint32_t	windowHeight = 720;
 	};
-
 	extern Context context;
 
 	class Vertex {
@@ -70,8 +69,40 @@ namespace pje {
 		glm::vec3 color;
 
 		Vertex(glm::vec2 position, glm::vec3 color) : 
-			position(position), color(color) {}
-	};
+			position(position), color(color) {}									// initialization list
+	
+		static VkVertexInputBindingDescription getInputBindingDesc() {
+			VkVertexInputBindingDescription desc;
+			desc.binding = 0;													// index of a VkVertexInputBindingDescription
+			desc.stride = sizeof(Vertex);										// byte size of one Vertex
+			desc.inputRate = VkVertexInputRate::VK_VERTEX_INPUT_RATE_VERTEX;	// per Instance | per Vertex
 
+			return desc;
+		}
+
+		static std::array<VkVertexInputAttributeDescription, 2> getInputAttributeDesc() {	// array size equals amount of members in pje::Vertex
+			std::array<VkVertexInputAttributeDescription, 2> attributes;
+			
+			attributes[0].location = 0;										// Vertex Input Buffer
+			attributes[0].binding = 0;										// index of a VkVertexInputBindingDescription
+			attributes[0].format = VkFormat::VK_FORMAT_R32G32_SFLOAT;		// vec2
+			attributes[0].offset = offsetof(Vertex, position);				// 0
+
+			attributes[1].location = 1;
+			attributes[1].binding = 0;
+			attributes[1].format = VkFormat::VK_FORMAT_R32G32B32_SFLOAT;	// vec3
+			attributes[1].offset = offsetof(Vertex, color);					// 2 * 4 Byte = 8
+
+			return attributes;
+		}
+	};
 	extern std::vector<Vertex> debugTriangle;
+
+	struct PJBuffer {
+		VkBuffer		vertexVkBuffer;
+		VkDeviceMemory	vertexDeviceMemory;
+
+		const VkMemoryPropertyFlags flags = VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+	};
+	extern PJBuffer currentLoadForGPU;
 }

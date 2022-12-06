@@ -67,6 +67,70 @@ void clearShaderStages() {
 
 // ################################################################################################################################################################## //
 
+/* TODO */
+void createVkBuffer() {}
+
+/* Used by assignPJBuffer() */
+uint32_t getMemoryTypeIndex(uint32_t memoryTypeBits, VkMemoryPropertyFlags flags) { 
+	VkPhysicalDeviceMemoryProperties memProps;
+	vkGetPhysicalDeviceMemoryProperties(pje::context.physicalDevices[pje::context.choosenPhysicalDevice], &memProps);
+
+	for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
+		if ((memoryTypeBits & (1 << i)) && (memProps.memoryTypes[i].propertyFlags & flags) >= flags) {
+			return i;
+		}
+	}
+
+	throw runtime_error("Error at getMemoryTypeIndex");
+}
+
+/* Fills pje::currentLoadForGPU */
+void assignPJBuffer(vector<pje::Vertex> objectTarget) {
+	uint64_t objectByteSize = sizeof(pje::Vertex) * objectTarget.size();
+
+	VkBufferCreateInfo vkBufferInfo;
+	vkBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	vkBufferInfo.pNext = nullptr;
+	vkBufferInfo.flags = 0;
+	vkBufferInfo.size = objectByteSize;
+	vkBufferInfo.usage = VkBufferUsageFlagBits::VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	vkBufferInfo.sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE;
+	vkBufferInfo.queueFamilyIndexCount = 0;			// while VK_SHARING_MODE_EXCLUSIVE
+	vkBufferInfo.pQueueFamilyIndices = nullptr;		// while VK_SHARING_MODE_EXCLUSIVE
+
+	pje::context.result = vkCreateBuffer(pje::context.logicalDevice, &vkBufferInfo, nullptr, &pje::currentLoadForGPU.vertexVkBuffer);
+	if (pje::context.result != VK_SUCCESS) {
+		cout << "Error at vkCreateBuffer" << endl;
+		throw runtime_error("Error at vkCreateBuffer");
+	}
+
+	VkMemoryRequirements memReq;
+	vkGetBufferMemoryRequirements(pje::context.logicalDevice, pje::currentLoadForGPU.vertexVkBuffer, &memReq);
+
+	VkMemoryAllocateInfo memAllocInfo;
+	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memAllocInfo.pNext = nullptr;
+	memAllocInfo.allocationSize = memReq.size;
+	memAllocInfo.memoryTypeIndex = getMemoryTypeIndex(memReq.memoryTypeBits, pje::currentLoadForGPU.flags);
+
+	pje::context.result = vkAllocateMemory(pje::context.logicalDevice, &memAllocInfo, nullptr, &pje::currentLoadForGPU.vertexDeviceMemory);
+	if (pje::context.result != VK_SUCCESS) {
+		cout << "Error at vkAllocateMemory" << endl;
+		throw runtime_error("Error at vkAllocateMemory");
+	}
+
+	vkBindBufferMemory(pje::context.logicalDevice, pje::currentLoadForGPU.vertexVkBuffer, pje::currentLoadForGPU.vertexDeviceMemory, 0);
+
+	void* rawPointer;
+	vkMapMemory(pje::context.logicalDevice, pje::currentLoadForGPU.vertexDeviceMemory, 0, memReq.size, 0, &rawPointer);	// mapping memory object into cpu address space
+	memcpy(rawPointer, objectTarget.data(), objectByteSize);
+	// here : vkFLushMappedMemoryRange() if VK_MEMORY_PROPERTY_HOST_COHERENT_BIT wasn't set
+	vkUnmapMemory(pje::context.logicalDevice, pje::currentLoadForGPU.vertexDeviceMemory);
+
+}
+
+// ################################################################################################################################################################## //
+
 /* cleanupRealtimeRendering should only destroy context's swapchain when the program will be closed */
 void cleanupRealtimeRendering(bool reset = false) {
 	/* also automatically done by vkDestroyCommandPool */
@@ -81,6 +145,8 @@ void cleanupRealtimeRendering(bool reset = false) {
 
 	/* should ONLY be used by stopVulkan() */
 	if (!reset) {
+		vkFreeMemory(pje::context.logicalDevice, pje::currentLoadForGPU.vertexDeviceMemory, nullptr);
+		vkDestroyBuffer(pje::context.logicalDevice, pje::currentLoadForGPU.vertexVkBuffer, nullptr);
 		vkDestroyPipeline(pje::context.logicalDevice, pje::context.pipeline, nullptr);
 		vkDestroyRenderPass(pje::context.logicalDevice, pje::context.renderPass, nullptr);
 		vkDestroyPipelineLayout(pje::context.logicalDevice, pje::context.pipelineLayout, nullptr);
@@ -190,7 +256,6 @@ void setupRealtimeRendering(bool reset = false) {
 		viewportInfo.scissorCount = 1;							// number of scissors
 		viewportInfo.pScissors = &initScissor;
 
-		/* Fixed Function : Input Assembler */
 		VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
 		inputAssemblyInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
 		inputAssemblyInfo.pNext = nullptr;
@@ -198,16 +263,19 @@ void setupRealtimeRendering(bool reset = false) {
 		inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;	// how single vertices will be assembled
 		inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
 
+		auto vertexBindingDesc = pje::Vertex::getInputBindingDesc();
+		auto vertexAttribsDesc = pje::Vertex::getInputAttributeDesc();
+
 		/* Usally sizes of vertices and their attributes are defined here
 		 * It has similar tasks to OpenGL's glBufferData(), glVertexAttribPointer() etc. (Vertex Shader => layout in) */
 		VkPipelineVertexInputStateCreateInfo vertexInputInfo;
 		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 		vertexInputInfo.pNext = nullptr;
 		vertexInputInfo.flags = 0;
-		vertexInputInfo.vertexBindingDescriptionCount = 0;		// number of pVertexBindingDescriptionS
-		vertexInputInfo.pVertexBindingDescriptions = nullptr;	// binding index for AttributeDescription | stride for sizeof(Vertex) | inputRate to decide between per vertex or per instance
-		vertexInputInfo.vertexAttributeDescriptionCount = 0;	// number of pVertexAttribute
-		vertexInputInfo.pVertexAttributeDescriptions = nullptr;	// location in shader code | binding is binding index of BindingDescription | format defines vertex datatype | offset defines start of the element
+		vertexInputInfo.vertexBindingDescriptionCount = 1;							// number of pVertexBindingDescriptionS
+		vertexInputInfo.pVertexBindingDescriptions = &vertexBindingDesc;			// binding index for AttributeDescription | stride for sizeof(Vertex) | inputRate to decide between per vertex or per instance
+		vertexInputInfo.vertexAttributeDescriptionCount = vertexAttribsDesc.size();	// number of pVertexAttribute
+		vertexInputInfo.pVertexAttributeDescriptions = vertexAttribsDesc.data();	// location in shader code | binding is binding index of BindingDescription | format defines vertex datatype | offset defines start of the element
 
 		VkPipelineRasterizationStateCreateInfo rasterizationInfo;
 		rasterizationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -430,13 +498,17 @@ void setupRealtimeRendering(bool reset = false) {
 		throw runtime_error("Error at vkAllocateCommandBuffers");
 	}
 
+	/* Allocation of VkBuffer to transfer CPU vertices onto GPU */
+	if (!reset)
+		assignPJBuffer(pje::debugTriangle);
+
 	/* CommandBuffer RECORDING => SET command inside of the command buffer */
 
 	// Begin Recording
 	VkCommandBufferBeginInfo commandBufferBeginInfo;
 	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	commandBufferBeginInfo.pNext = nullptr;
-	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;	// enables sending to gpu before gpu executes same command buffer
+	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;	// enables sending to GPU before GPU executes same command buffer
 	commandBufferBeginInfo.pInheritanceInfo = nullptr;								// for secondary command buffer (see VkCommandBufferAllocateInfo.level)
 
 	// Telling command buffer which render pass to start
@@ -471,8 +543,11 @@ void setupRealtimeRendering(bool reset = false) {
 		VkRect2D scissor{ {0, 0}, {pje::context.windowWidth, pje::context.windowHeight} };
 		vkCmdSetScissor(pje::context.commandBuffers[i], 0, 1, &scissor);
 
+		array<VkDeviceSize, 1> offsets { 0 };
+		vkCmdBindVertexBuffers(pje::context.commandBuffers[i], 0, 1, &pje::currentLoadForGPU.vertexVkBuffer, offsets.data());
+
 		// DRAW => drawing on swapchain images
-		vkCmdDraw(pje::context.commandBuffers[i], 3, 1, 0, 1);				// TODO (hardcoded for current shader)
+		vkCmdDraw(pje::context.commandBuffers[i], pje::debugTriangle.size(), 1, 0, 1);				// TODO (hardcoded for current shader)
 
 		vkCmdEndRenderPass(pje::context.commandBuffers[i]);
 
@@ -983,6 +1058,7 @@ void pje::stopVulkan() {
 	vkDestroySemaphore(pje::context.logicalDevice, pje::context.semaphoreSwapchainImageReceived, nullptr);
 	vkDestroySemaphore(pje::context.logicalDevice, pje::context.semaphoreRenderingFinished, nullptr);
 
+	/* vkDestroy Pipeline etc. */
 	cleanupRealtimeRendering();
 
 	vkDestroyShaderModule(pje::context.logicalDevice, pje::context.shaderModuleBasicVert, nullptr);

@@ -45,8 +45,16 @@ inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& physicalDevice) {
 	/* memoryProperties => heaps/memory with flags */
 	VkPhysicalDeviceMemoryProperties memoryProperties;
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
+
+	uint64_t accHeap = 0;
+	for (uint32_t i = 0; i < memoryProperties.memoryHeapCount; i++) {
+		accHeap += memoryProperties.memoryHeaps[i].size;
+	}
+
 	std::cout << "\t\t\t\tMemory Properties:" << std::endl;
-	std::cout << "\t\t\t\t\tHeaps:\t" << memoryProperties.memoryHeaps->size << std::endl;
+	std::cout << "\t\t\t\t\tTypeCount:\t" << memoryProperties.memoryTypeCount << std::endl;
+	std::cout << "\t\t\t\t\tHeapCount:\t" << memoryProperties.memoryHeapCount << std::endl;
+	std::cout << "\t\t\t\t\taccumulated Heap:\t" << accHeap << std::endl;
 
 	/* GPUs have queues to solve tasks ; their respective attributes are clustered in families */
 	uint32_t numberOfQueueFamilies = 0;
