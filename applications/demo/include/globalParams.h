@@ -99,10 +99,11 @@ namespace pje {
 	extern std::vector<Vertex> debugTriangle;
 
 	struct PJBuffer {
-		VkBuffer		vertexVkBuffer;
-		VkDeviceMemory	vertexDeviceMemory;
+		VkBuffer		buffer;
+		VkDeviceMemory	deviceMemory;
 
-		const VkMemoryPropertyFlags flags = VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		VkMemoryPropertyFlags flags;
 	};
-	extern PJBuffer currentLoadForGPU;
+	extern PJBuffer stagingBuffer;
+	extern PJBuffer vertexBuffer;
 }

@@ -8,4 +8,5 @@ std::vector<pje::Vertex> pje::debugTriangle = {
 	pje::Vertex({-0.5f,  0.5f}, {0.0f, 0.0f, 5.0f})
 };
 
-pje::PJBuffer pje::currentLoadForGPU = {};
+pje::PJBuffer pje::stagingBuffer = {};
+pje::PJBuffer pje::vertexBuffer = {};

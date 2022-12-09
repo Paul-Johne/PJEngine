@@ -67,16 +67,14 @@ void clearShaderStages() {
 
 // ################################################################################################################################################################## //
 
-/* TODO */
-void createVkBuffer() {}
-
-/* Used by assignPJBuffer() */
+/* Used by assignPJBufferToVRAM() */
 uint32_t getMemoryTypeIndex(uint32_t memoryTypeBits, VkMemoryPropertyFlags flags) { 
 	VkPhysicalDeviceMemoryProperties memProps;
 	vkGetPhysicalDeviceMemoryProperties(pje::context.physicalDevices[pje::context.choosenPhysicalDevice], &memProps);
 
+	// Compares all GPU's valid memory types with given requirements (similiar to queue families)
 	for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
-		if ((memoryTypeBits & (1 << i)) && (memProps.memoryTypes[i].propertyFlags & flags) >= flags) {
+		if ((memoryTypeBits & (1 << i)) && (memProps.memoryTypes[i].propertyFlags & flags) == flags) {
 			return i;
 		}
 	}
@@ -84,58 +82,143 @@ uint32_t getMemoryTypeIndex(uint32_t memoryTypeBits, VkMemoryPropertyFlags flags
 	throw runtime_error("Error at getMemoryTypeIndex");
 }
 
-/* Fills pje::currentLoadForGPU */
-void assignPJBuffer(vector<pje::Vertex> objectTarget) {
-	uint64_t objectByteSize = sizeof(pje::Vertex) * objectTarget.size();
-
+/* Used by assignPJBufferToVRAM() */
+void createPJBuffer(pje::PJBuffer& rawPJBuffer, VkDeviceSize size, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags) {
+	rawPJBuffer.flags = memoryFlags;
+	
 	VkBufferCreateInfo vkBufferInfo;
 	vkBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	vkBufferInfo.pNext = nullptr;
 	vkBufferInfo.flags = 0;
-	vkBufferInfo.size = objectByteSize;
-	vkBufferInfo.usage = VkBufferUsageFlagBits::VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	vkBufferInfo.size = size;
+	vkBufferInfo.usage = usageFlags;
 	vkBufferInfo.sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE;
 	vkBufferInfo.queueFamilyIndexCount = 0;			// while VK_SHARING_MODE_EXCLUSIVE
 	vkBufferInfo.pQueueFamilyIndices = nullptr;		// while VK_SHARING_MODE_EXCLUSIVE
 
-	pje::context.result = vkCreateBuffer(pje::context.logicalDevice, &vkBufferInfo, nullptr, &pje::currentLoadForGPU.vertexVkBuffer);
+	pje::context.result = vkCreateBuffer(pje::context.logicalDevice, &vkBufferInfo, nullptr, &rawPJBuffer.buffer);
 	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkCreateBuffer" << endl;
 		throw runtime_error("Error at vkCreateBuffer");
 	}
 
 	VkMemoryRequirements memReq;
-	vkGetBufferMemoryRequirements(pje::context.logicalDevice, pje::currentLoadForGPU.vertexVkBuffer, &memReq);
+	vkGetBufferMemoryRequirements(pje::context.logicalDevice, rawPJBuffer.buffer, &memReq);
 
 	VkMemoryAllocateInfo memAllocInfo;
 	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	memAllocInfo.pNext = nullptr;
 	memAllocInfo.allocationSize = memReq.size;
-	memAllocInfo.memoryTypeIndex = getMemoryTypeIndex(memReq.memoryTypeBits, pje::currentLoadForGPU.flags);
+	memAllocInfo.memoryTypeIndex = getMemoryTypeIndex(memReq.memoryTypeBits, rawPJBuffer.flags);
 
-	pje::context.result = vkAllocateMemory(pje::context.logicalDevice, &memAllocInfo, nullptr, &pje::currentLoadForGPU.vertexDeviceMemory);
+	pje::context.result = vkAllocateMemory(pje::context.logicalDevice, &memAllocInfo, nullptr, &rawPJBuffer.deviceMemory);
 	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkAllocateMemory" << endl;
 		throw runtime_error("Error at vkAllocateMemory");
 	}
 
-	vkBindBufferMemory(pje::context.logicalDevice, pje::currentLoadForGPU.vertexVkBuffer, pje::currentLoadForGPU.vertexDeviceMemory, 0);
+	vkBindBufferMemory(pje::context.logicalDevice, rawPJBuffer.buffer, rawPJBuffer.deviceMemory, 0);
+}
+
+/* Used by assignPJBufferToVRAM() - Sends CommandBuffer for copy */
+void copyPJBufferToPJBuffer(pje::PJBuffer src, pje::PJBuffer dst, VkDeviceSize size) {
+	VkCommandBufferAllocateInfo commandBufferAllocateInfo;
+	commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	commandBufferAllocateInfo.pNext = nullptr;
+	commandBufferAllocateInfo.commandPool = pje::context.commandPool;
+	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	commandBufferAllocateInfo.commandBufferCount = 1;
+
+	VkCommandBuffer commandBuffer;
+	pje::context.result = vkAllocateCommandBuffers(pje::context.logicalDevice, &commandBufferAllocateInfo, &commandBuffer);
+	if (pje::context.result != VK_SUCCESS) {
+		cout << "Error at copyPJBufferToPJBuffer::vkAllocateCommandBuffers" << endl;
+		throw runtime_error("Error at copyPJBufferToPJBuffer::vkAllocateCommandBuffers");
+	}
+
+	VkCommandBufferBeginInfo commandBufferBeginInfo;
+	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	commandBufferBeginInfo.pNext = nullptr;
+	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT; // ensures driver that vkSubmit will only happen ONCE
+	commandBufferBeginInfo.pInheritanceInfo = nullptr;
+
+	/* START - RECORDING */
+	pje::context.result = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
+	if (pje::context.result != VK_SUCCESS) {
+		cout << "Error at copyPJBufferToPJBuffer::vkBeginCommandBuffer" << endl;
+		throw runtime_error("Error at copyPJBufferToPJBuffer::vkBeginCommandBuffer");
+	}
+
+	VkBufferCopy bufferCopyRegion1;
+	bufferCopyRegion1.srcOffset = 0;
+	bufferCopyRegion1.dstOffset = 0;
+	bufferCopyRegion1.size = size;
+	vkCmdCopyBuffer(commandBuffer, src.buffer, dst.buffer, 1, &bufferCopyRegion1);
+
+	pje::context.result = vkEndCommandBuffer(commandBuffer);
+	if (pje::context.result != VK_SUCCESS) {
+		cout << "Error at copyPJBufferToPJBuffer::vkEndCommandBuffer" << endl;
+		throw runtime_error("Error at copyPJBufferToPJBuffer::vkEndCommandBuffer");
+	}
+	/* END - RECORDING */
+
+	VkSubmitInfo submitInfo;
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext = nullptr;
+	submitInfo.waitSemaphoreCount = 0;
+	submitInfo.pWaitSemaphores = nullptr;
+	submitInfo.pWaitDstStageMask = nullptr;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffer;
+	submitInfo.signalSemaphoreCount = 0;
+	submitInfo.pSignalSemaphores = nullptr;
+
+	pje::context.result = vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, VK_NULL_HANDLE);
+	if (pje::context.result != VK_SUCCESS) {
+		cout << "Error at copyPJBufferToPJBuffer::vkQueueSubmit" << endl;
+		throw runtime_error("Error at copyPJBufferToPJBuffer::vkQueueSubmit");
+	}
+
+	vkQueueWaitIdle(pje::context.queueForPrototyping); // better solution : fences
+	vkFreeCommandBuffers(pje::context.logicalDevice, pje::context.commandPool, 1, &commandBuffer);
+}
+
+/* Sends data on RAM to VRAM */
+void assignPJBufferToVRAM(vector<pje::Vertex> objectTarget) {
+	uint64_t objectByteSize = sizeof(pje::Vertex) * objectTarget.size();
+
+	createPJBuffer(
+		pje::stagingBuffer,
+		objectByteSize,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+	);
 
 	void* rawPointer;
-	vkMapMemory(pje::context.logicalDevice, pje::currentLoadForGPU.vertexDeviceMemory, 0, memReq.size, 0, &rawPointer);	// mapping memory object into cpu address space
+	vkMapMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory, 0, VK_WHOLE_SIZE, 0, &rawPointer);	// VK_WHOLE_SIZE == memReq.size
 	memcpy(rawPointer, objectTarget.data(), objectByteSize);
-	// here : vkFLushMappedMemoryRange() if VK_MEMORY_PROPERTY_HOST_COHERENT_BIT wasn't set
-	vkUnmapMemory(pje::context.logicalDevice, pje::currentLoadForGPU.vertexDeviceMemory);
+	// here : vkFlushMappedMemoryRange() if VK_MEMORY_PROPERTY_HOST_COHERENT_BIT wasn't set
+	vkUnmapMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory);
 
+	createPJBuffer(
+		pje::vertexBuffer,
+		objectByteSize,
+		VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+	);
+
+	copyPJBufferToPJBuffer(pje::stagingBuffer, pje::vertexBuffer, objectByteSize);
+
+	vkDestroyBuffer(pje::context.logicalDevice, pje::stagingBuffer.buffer, nullptr);
+	vkFreeMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory, nullptr);
 }
 
 // ################################################################################################################################################################## //
 
 /* cleanupRealtimeRendering should only destroy context's swapchain when the program will be closed */
 void cleanupRealtimeRendering(bool reset = false) {
-	/* also automatically done by vkDestroyCommandPool */
+	// also automatically by vkDestroyCommandPool
 	vkFreeCommandBuffers(pje::context.logicalDevice, pje::context.commandPool, pje::context.numberOfImagesInSwapchain, pje::context.commandBuffers.get());
-	vkDestroyCommandPool(pje::context.logicalDevice, pje::context.commandPool, nullptr);
 
 	/* CLEANUP => delete for all 'new' initializations */
 	for (uint32_t i = 0; i < pje::context.numberOfImagesInSwapchain; i++) {
@@ -145,8 +228,11 @@ void cleanupRealtimeRendering(bool reset = false) {
 
 	/* should ONLY be used by stopVulkan() */
 	if (!reset) {
-		vkFreeMemory(pje::context.logicalDevice, pje::currentLoadForGPU.vertexDeviceMemory, nullptr);
-		vkDestroyBuffer(pje::context.logicalDevice, pje::currentLoadForGPU.vertexVkBuffer, nullptr);
+		vkFreeMemory(pje::context.logicalDevice, pje::vertexBuffer.deviceMemory, nullptr);
+		vkDestroyBuffer(pje::context.logicalDevice, pje::vertexBuffer.buffer, nullptr);
+
+		vkDestroyCommandPool(pje::context.logicalDevice, pje::context.commandPool, nullptr);
+
 		vkDestroyPipeline(pje::context.logicalDevice, pje::context.pipeline, nullptr);
 		vkDestroyRenderPass(pje::context.logicalDevice, pje::context.renderPass, nullptr);
 		vkDestroyPipelineLayout(pje::context.logicalDevice, pje::context.pipelineLayout, nullptr);
@@ -472,35 +558,37 @@ void setupRealtimeRendering(bool reset = false) {
 	}
 
 	/* VkCommandPool holds CommandBuffer which are necessary to tell Vulkan what to do */
-	VkCommandPoolCreateInfo commandPoolInfo;
-	commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	commandPoolInfo.pNext = nullptr;
-	commandPoolInfo.flags = 0;												// reset record of single frame buffer | set to buffer to 'transient' for optimisation
-	commandPoolInfo.queueFamilyIndex = pje::context.choosenQueueFamily;		// must be the same as in VkDeviceQueueCreateInfo of the logical device & Queue Family 'VK_QUEUE_GRAPHICS_BIT' must be 1
+	if (!reset) {
+		VkCommandPoolCreateInfo commandPoolInfo;
+		commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+		commandPoolInfo.pNext = nullptr;
+		commandPoolInfo.flags = 0;												// reset record of single frame buffer | set to buffer to 'transient' for optimisation
+		commandPoolInfo.queueFamilyIndex = pje::context.choosenQueueFamily;		// must be the same as in VkDeviceQueueCreateInfo of the logical device & Queue Family 'VK_QUEUE_GRAPHICS_BIT' must be 1
 
-	pje::context.result = vkCreateCommandPool(pje::context.logicalDevice, &commandPoolInfo, nullptr, &pje::context.commandPool);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at vkCreateCommandPool" << endl;
-		throw runtime_error("Error at vkCreateCommandPool");
+		pje::context.result = vkCreateCommandPool(pje::context.logicalDevice, &commandPoolInfo, nullptr, &pje::context.commandPool);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkCreateCommandPool" << endl;
+			throw runtime_error("Error at vkCreateCommandPool");
+		}
 	}
-
+	
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo;
 	commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	commandBufferAllocateInfo.pNext = nullptr;
 	commandBufferAllocateInfo.commandPool = pje::context.commandPool;
 	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;						// primary => processed directly | secondary => invoked by primary
-	commandBufferAllocateInfo.commandBufferCount = pje::context.numberOfImagesInSwapchain;	// each buffer in swapchain needs dedicated command buffer
+	commandBufferAllocateInfo.commandBufferCount = pje::context.numberOfImagesInSwapchain;	// each buffer in swapchain needs/has a dedicated command buffer
 
 	pje::context.commandBuffers = make_unique<VkCommandBuffer[]>(pje::context.numberOfImagesInSwapchain);
 	pje::context.result = vkAllocateCommandBuffers(pje::context.logicalDevice, &commandBufferAllocateInfo, pje::context.commandBuffers.get());
 	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at vkAllocateCommandBuffers" << endl;
-		throw runtime_error("Error at vkAllocateCommandBuffers");
+		cout << "Error at setupRealtimeRendering::vkAllocateCommandBuffers" << endl;
+		throw runtime_error("Error at setupRealtimeRendering::vkAllocateCommandBuffers");
 	}
 
 	/* Allocation of VkBuffer to transfer CPU vertices onto GPU */
 	if (!reset)
-		assignPJBuffer(pje::debugTriangle);
+		assignPJBufferToVRAM(pje::debugTriangle);
 
 	/* CommandBuffer RECORDING => SET command inside of the command buffer */
 
@@ -544,19 +632,20 @@ void setupRealtimeRendering(bool reset = false) {
 		vkCmdSetScissor(pje::context.commandBuffers[i], 0, 1, &scissor);
 
 		array<VkDeviceSize, 1> offsets { 0 };
-		vkCmdBindVertexBuffers(pje::context.commandBuffers[i], 0, 1, &pje::currentLoadForGPU.vertexVkBuffer, offsets.data());
+		// Bind => ordering to use certain buffer in VRAM
+		vkCmdBindVertexBuffers(pje::context.commandBuffers[i], 0, 1, &pje::vertexBuffer.buffer, offsets.data());
 
 		// DRAW => drawing on swapchain images
 		vkCmdDraw(pje::context.commandBuffers[i], pje::debugTriangle.size(), 1, 0, 1);				// TODO (hardcoded for current shader)
 
 		vkCmdEndRenderPass(pje::context.commandBuffers[i]);
 
-		/* END RECORDING */
 		pje::context.result = vkEndCommandBuffer(pje::context.commandBuffers[i]);
 		if (pje::context.result != VK_SUCCESS) {
 			cout << "Error at vkEndCommandBuffer of Command Buffer No.:\t" << pje::context.commandBuffers[i] << endl;
 			throw runtime_error("Error at vkEndCommandBuffer");
 		}
+		/* END RECORDING */
 	}
 }
 
@@ -980,7 +1069,7 @@ int pje::startVulkan() {
 	}
 
 	/* Getting Queue of some logical device to assign tasks (CommandBuffer) later */
-	vkGetDeviceQueue(pje::context.logicalDevice, 0, 0, &pje::context.queueForPrototyping);
+	vkGetDeviceQueue(pje::context.logicalDevice, pje::context.choosenQueueFamily, 0, &pje::context.queueForPrototyping);
 
 	/* ############## LOADING SHADERS ############## */
 
