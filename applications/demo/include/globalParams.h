@@ -4,6 +4,7 @@
 	#include <memory>
 	#include <vector>
 	#include <array>
+	#include <chrono>
 
 	#include <vulkan/vulkan.h>
 	#include <GLFW/glfw3.h>
@@ -13,10 +14,11 @@
 /* Collection of global parameters */
 namespace pje {
 
-	/* Blueprint */
+	/* #### CONTEXT #### */
 	struct Context {
 		VkResult	result;
 		const char* appName = "PJEngine";
+		std::chrono::time_point<std::chrono::steady_clock> startTimePoint;
 
 		VkInstance						vulkanInstance;
 		VkSurfaceKHR					surface;
@@ -49,6 +51,11 @@ namespace pje {
 		VkCommandPool						commandPool;
 		std::unique_ptr<VkCommandBuffer[]>	commandBuffers;
 
+		glm::mat4 mvp;
+		VkDescriptorSetLayout descriptorSetLayout;
+		VkDescriptorPool descriptorPool;
+		VkDescriptorSet descriptorSet;
+
 		const VkFormat		outputFormat = VkFormat::VK_FORMAT_B8G8R8A8_UNORM;		// VkFormat 44
 		const VkClearValue	clearValueDefault = { 0.588f, 0.294f, 0.0f, 1.0f };		// DEFAULT BACKGROUND
 
@@ -63,6 +70,7 @@ namespace pje {
 	};
 	extern Context context;
 
+	/* #### VERTEX #### */
 	class Vertex {
 	public:
 		glm::vec2 position;
@@ -83,21 +91,23 @@ namespace pje {
 		static std::array<VkVertexInputAttributeDescription, 2> getInputAttributeDesc() {	// array size equals amount of members in pje::Vertex
 			std::array<VkVertexInputAttributeDescription, 2> attributes;
 			
-			attributes[0].location = 0;										// Vertex Input Buffer
+			attributes[0].location = 0;										// Vertex Input Buffer => layout(location = 0)
 			attributes[0].binding = 0;										// index of a VkVertexInputBindingDescription
 			attributes[0].format = VkFormat::VK_FORMAT_R32G32_SFLOAT;		// vec2
 			attributes[0].offset = offsetof(Vertex, position);				// 0
 
-			attributes[1].location = 1;
-			attributes[1].binding = 0;
+			attributes[1].location = 1;										// Vertex Input Buffer => layout(location = 1)
+			attributes[1].binding = 0;										// index of a VkVertexInputBindingDescription
 			attributes[1].format = VkFormat::VK_FORMAT_R32G32B32_SFLOAT;	// vec3
 			attributes[1].offset = offsetof(Vertex, color);					// 2 * 4 Byte = 8
 
 			return attributes;
 		}
 	};
-	extern std::vector<Vertex> debugTriangle;
+	extern std::vector<Vertex> debugVertices;
+	extern std::vector<uint32_t> debugIndices;
 
+	/* #### PJBUFFER #### */
 	struct PJBuffer {
 		VkBuffer		buffer;
 		VkDeviceMemory	deviceMemory;
@@ -106,4 +116,6 @@ namespace pje {
 	};
 	extern PJBuffer stagingBuffer;
 	extern PJBuffer vertexBuffer;
+	extern PJBuffer indexBuffer;
+	extern PJBuffer mvpUniformBuffer;
 }

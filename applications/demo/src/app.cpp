@@ -8,6 +8,8 @@ int main() {
 	int res;
 
 	try {
+		pje::context.startTimePoint = std::chrono::steady_clock::now();
+
 		res = pje::startGlfw3(pje::context.appName);
 		if (res != 0) {
 			return res;
