@@ -8,6 +8,8 @@ int main() {
 	int res;
 
 	try {
+		//pje::modelLoader.get()->loadModel("some/wrong/data");
+
 		pje::context.startTimePoint = std::chrono::steady_clock::now();
 
 		res = pje::startGlfw3(pje::context.appName);

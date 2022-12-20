@@ -1,6 +1,8 @@
 # PJEngine (Graphic Engine using Vulkan SDK to render animations in realtime)
 Praxisprojekt (*Beginn: SS2022*)
 
+![Gif](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/gifsForGithub/001.gif)
+
 ## Installation Guide - OS Windows - Visual Studio CMake Project
 
 IDE | Project Structure

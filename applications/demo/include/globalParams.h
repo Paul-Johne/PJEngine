@@ -73,10 +73,10 @@ namespace pje {
 	/* #### VERTEX #### */
 	class Vertex {
 	public:
-		glm::vec2 position;
+		glm::vec3 position;
 		glm::vec3 color;
 
-		Vertex(glm::vec2 position, glm::vec3 color) : 
+		Vertex(glm::vec3 position, glm::vec3 color) : 
 			position(position), color(color) {}									// initialization list
 	
 		static VkVertexInputBindingDescription getInputBindingDesc() {
@@ -88,18 +88,19 @@ namespace pje {
 			return desc;
 		}
 
-		static std::array<VkVertexInputAttributeDescription, 2> getInputAttributeDesc() {	// array size equals amount of members in pje::Vertex
+		/* array size equals amount of members in pje::Vertex */
+		static std::array<VkVertexInputAttributeDescription, 2> getInputAttributeDesc() {
 			std::array<VkVertexInputAttributeDescription, 2> attributes;
 			
-			attributes[0].location = 0;										// Vertex Input Buffer => layout(location = 0)
-			attributes[0].binding = 0;										// index of a VkVertexInputBindingDescription
-			attributes[0].format = VkFormat::VK_FORMAT_R32G32_SFLOAT;		// vec2
-			attributes[0].offset = offsetof(Vertex, position);				// 0
+			attributes[0].location = 0;											// Vertex Input Buffer => layout(location = 0)
+			attributes[0].binding = 0;											// index of a VkVertexInputBindingDescription
+			attributes[0].format = VkFormat::VK_FORMAT_R32G32B32_SFLOAT;		// vec3
+			attributes[0].offset = offsetof(Vertex, position);					// 0
 
-			attributes[1].location = 1;										// Vertex Input Buffer => layout(location = 1)
-			attributes[1].binding = 0;										// index of a VkVertexInputBindingDescription
-			attributes[1].format = VkFormat::VK_FORMAT_R32G32B32_SFLOAT;	// vec3
-			attributes[1].offset = offsetof(Vertex, color);					// 2 * 4 Byte = 8
+			attributes[1].location = 1;											// Vertex Input Buffer => layout(location = 1)
+			attributes[1].binding = 0;											// index of a VkVertexInputBindingDescription
+			attributes[1].format = VkFormat::VK_FORMAT_R32G32B32_SFLOAT;		// vec3
+			attributes[1].offset = offsetof(Vertex, color);						// OR: 2 * 4 Byte = 8
 
 			return attributes;
 		}

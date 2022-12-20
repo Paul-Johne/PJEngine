@@ -1,6 +1,6 @@
 /* Ignores header if not needed after #include */
     #pragma once
-/* part of std => is_convertible_v*/
+/* part of std => is_convertible_v */
 	#include <cstdint>
 	#include <type_traits>
 

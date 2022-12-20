@@ -7,11 +7,13 @@ set(DEMO_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/include/debugUtils.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/globalFuns.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/globalParams.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/modelloader.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/vef.h"
 
     "${CMAKE_CURRENT_SOURCE_DIR}/src/app.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/globalFuns.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/globalParams.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/modelloader.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/vef.cpp"
 )
 
