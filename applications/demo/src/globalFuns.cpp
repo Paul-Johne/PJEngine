@@ -477,7 +477,7 @@ void setupRealtimeRendering(bool reset = false) {
 		rasterizationInfo.depthClampEnable = VK_FALSE;					// should vertices outside of the near-far-plane be rendered?
 		rasterizationInfo.rasterizerDiscardEnable = VK_FALSE;			// if true primitives won't be rendered but they may be used for other calculations
 		rasterizationInfo.polygonMode = VK_POLYGON_MODE_FILL;
-		rasterizationInfo.cullMode = VK_CULL_MODE_NONE;					// backface culling
+		rasterizationInfo.cullMode = VkCullModeFlagBits::VK_CULL_MODE_BACK_BIT;		// backface culling
 		rasterizationInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 		rasterizationInfo.depthBiasEnable = VK_FALSE;
 		rasterizationInfo.depthBiasConstantFactor = 0.0f;
@@ -1385,12 +1385,13 @@ void drawFrameOnSurface() {
 	}
 }
 
+/* PJE : Modifying modelMatrix in relation to passed time since app start */
 void updateMVP() {
 	auto frameTimePoint = std::chrono::steady_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(frameTimePoint - pje::context.startTimePoint).count() / 1000.0f;
 
-	glm::mat4 modelMatrix = glm::rotate(glm::mat4(1.0f), duration * glm::radians(20.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	glm::mat4 viewMatrix = glm::lookAt(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	glm::mat4 modelMatrix = glm::rotate(glm::mat4(1.0f), duration * glm::radians(20.0f), glm::vec3(0.0f, 0.0f, -1.0f));			// TODO (Up is z axis?)
+	glm::mat4 viewMatrix = glm::lookAt(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));	// TODO (Up is z axis?)
 	glm::mat4 projectionMatrix = glm::perspective(
 		glm::radians(60.0f),
 		pje::context.windowWidth / (float)pje::context.windowHeight,

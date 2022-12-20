@@ -42,13 +42,15 @@ target_include_directories(demo PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 find_package(Vulkan REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
+find_package(assimp REQUIRED)
 
 # linking libraries in libraries folder
 target_link_libraries(demo PRIVATE
-    # External Dependencies => Vulkan, GLFW and GLM
+    # External Dependencies => Vulkan, GLFW, GLM and Assimp
     Vulkan::Vulkan
     glfw
     glm::glm
+    assimp::assimp
 
     # Internal Dependencies => ImGui will be included directly via demo_lib
     demo_lib

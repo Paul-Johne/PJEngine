@@ -1,7 +1,7 @@
-# PJEngine (Learning how to use Vulkan)
+# PJEngine (Graphic Engine using Vulkan SDK to render animations in realtime)
 Praxisprojekt (*Beginn: SS2022*)
 
-## Installation Guide - On Windows with Visual Studio
+## Installation Guide - OS Windows - Visual Studio CMake Project
 
 IDE | Project Structure
 :-------------------------:|:-------------------------:
@@ -16,21 +16,21 @@ Currently this project uses version 1.3 of Vulkan.
 Since the goal is to create a **cross-platform project** with **dynamically linked libraries** most of the required 3rd party libraries aren't included 
 in the project. The following table shows which other libraries aside from Vulkan are necessary and how they are included.
 
-static | dynamic | dynamic
-:-------------------------:|:-------------------------:|:-------------------------:
-![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_008.png) | ![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_006.png) | ![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_007.png)
-[Link](https://github.com/ocornut/imgui) | [Link](https://github.com/g-truc/glm) | [Link](https://github.com/glfw/glfw/releases/tag/3.3.7)
+static | dynamic | dynamic | dynamic
+:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:
+![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_008.png) | ![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_006.png) | ![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_007.png) | Assimp
+[Link](https://github.com/ocornut/imgui) | [Link](https://github.com/g-truc/glm) | [Link](https://github.com/glfw/glfw/releases/tag/3.3.7) | [Link](https://github.com/assimp/assimp)
 
 ### Linking of dynamic libraries
-ImGui is already coming with this repo, but the other two libraries need to be installed somewhere on your device. In the next step you will work with CMake Gui
+ImGui is already coming with this repo, but the other libraries need to be installed somewhere on your device. In the next step you will work with CMake Gui
 to create a build file to then install the respective library on your device. After that, you have to create global variables pointing to the 
 particular installation path.
 
 #### Installing GLM
 After opening CMake's GUI you have to select the folders containing the GLM Repo as the source and decide where you want to store the build.
-Next up, press *Configure* and stick with the default options. Now you ought to make some changes to the values and press *Configure* again what result
-should look like in the below image. Finally, you press *Generate* to create the final build folder containing a **sln file** that needs to be opened to
-install the library.
+Next up, press *Configure* and stick with the default options. Now you ought to make some changes to the highlighted values and press *Configure* 
+again what result should look like in the below image. Finally, you press *Generate* to create the final build folder containing a **sln file** 
+that needs to be opened to install the library.
 
 CMake GUI | Opening **sln file** with Visual Studio
 :-------------------------:|:-------------------------:
@@ -47,7 +47,14 @@ CMake GUI | Opening **sln file** with Visual Studio
 :-------------------------:|:-------------------------:
 ![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_010.png) | ![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_012.png)
 
-#### Create Global Variables
+#### Installing Assimp
+Just follow the same procedure as explained for GLM.
+
+CMake GUI | Opening **sln file** with Visual Studio
+:-------------------------:|:-------------------------:
+![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_014.png) | ![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_015.png)
+
+### Create Global Variables
 This example displays how to create globale variables on Windows.
 
 WARNING: YOU NEED TO NAME THE VARIABLES EXACTLY LIKE SHOWN IN THE UPCOMING IMAGE!
