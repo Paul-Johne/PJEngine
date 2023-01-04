@@ -2,15 +2,19 @@
 
 pje::Context pje::context = {};
 
-std::vector<pje::Vertex> pje::debugVertices = {
-	pje::Vertex({ -0.5f,  -0.5f, 0.5f}, {5.0f, 0.0f, 0.0f}),
-	pje::Vertex({  0.5f,   0.5f, 0.5f}, {0.0f, 5.0f, 0.0f}),
-	pje::Vertex({ -0.5f,   0.5f, 0.5f}, {0.0f, 0.0f, 5.0f}),
-	pje::Vertex({  0.5f,  -0.5f, 0.5f}, {1.0f, 1.0f, 1.0f})
+std::vector<pje::PJVertex> pje::debugVertices = {
+	pje::PJVertex({ -0.5f, 0.0f, -0.5f}, {5.0f, 0.0f, 0.0f}),
+	pje::PJVertex({  0.5f, 0.0f, -0.5f}, {0.0f, 5.0f, 0.0f}),
+	pje::PJVertex({ -0.5f, 0.0f,  0.5f}, {0.0f, 0.0f, 5.0f}),
+	pje::PJVertex({  0.5f, 0.0f,  0.5f}, {1.0f, 1.0f, 1.0f})
 };
 std::vector<uint32_t> pje::debugIndices = {
-	0, 1, 2,
-	0, 3, 1
+	0, 2, 1,
+	1, 2, 3
+};
+
+std::vector<pje::PJMesh> pje::debugMeshes = {
+	pje::PJMesh(pje::debugVertices, pje::debugIndices)
 };
 
 pje::PJBuffer pje::stagingBuffer = {};

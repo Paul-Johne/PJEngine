@@ -71,42 +71,63 @@ namespace pje {
 	extern Context context;
 
 	/* #### VERTEX #### */
-	class Vertex {
+	class PJVertex {
 	public:
-		glm::vec3 position;
-		glm::vec3 color;
+		glm::vec3 m_position;
+		glm::vec3 m_color;
 
-		Vertex(glm::vec3 position, glm::vec3 color) : 
-			position(position), color(color) {}									// initialization list
+		PJVertex() = delete;
+		PJVertex(glm::vec3 position, glm::vec3 color) :
+			m_position(position), m_color(color) {}									// initialization list
+		
+		~PJVertex()
+			{}
 	
+		/* integrated into vulkan pipeline */
 		static VkVertexInputBindingDescription getInputBindingDesc() {
 			VkVertexInputBindingDescription desc;
 			desc.binding = 0;													// index of a VkVertexInputBindingDescription
-			desc.stride = sizeof(Vertex);										// byte size of one Vertex
+			desc.stride = sizeof(PJVertex);										// byte size of one Vertex
 			desc.inputRate = VkVertexInputRate::VK_VERTEX_INPUT_RATE_VERTEX;	// per Instance | per Vertex
 
 			return desc;
 		}
 
-		/* array size equals amount of members in pje::Vertex */
+		/* integrated into vulkan pipeline */
+		/* array size equals amount of members in pje::PJVertex */
 		static std::array<VkVertexInputAttributeDescription, 2> getInputAttributeDesc() {
 			std::array<VkVertexInputAttributeDescription, 2> attributes;
 			
 			attributes[0].location = 0;											// Vertex Input Buffer => layout(location = 0)
 			attributes[0].binding = 0;											// index of a VkVertexInputBindingDescription
 			attributes[0].format = VkFormat::VK_FORMAT_R32G32B32_SFLOAT;		// vec3
-			attributes[0].offset = offsetof(Vertex, position);					// 0
+			attributes[0].offset = offsetof(PJVertex, m_position);				// 0
 
 			attributes[1].location = 1;											// Vertex Input Buffer => layout(location = 1)
 			attributes[1].binding = 0;											// index of a VkVertexInputBindingDescription
 			attributes[1].format = VkFormat::VK_FORMAT_R32G32B32_SFLOAT;		// vec3
-			attributes[1].offset = offsetof(Vertex, color);						// OR: 2 * 4 Byte = 8
+			attributes[1].offset = offsetof(PJVertex, m_color);					// OR: 2 * 4 Byte = 8
 
 			return attributes;
 		}
 	};
-	extern std::vector<Vertex> debugVertices;
+	extern std::vector<PJVertex> debugVertices;
 	extern std::vector<uint32_t> debugIndices;
+
+	/* #### Mesh #### */
+	class PJMesh {
+	public:
+		std::vector<PJVertex>	m_vertices;
+		std::vector<uint32_t>	m_indices;
+
+		PJMesh() = delete;
+		PJMesh(std::vector<PJVertex> vertices, std::vector<uint32_t> indices) :
+			m_vertices(vertices), m_indices(indices) {}
+
+		~PJMesh()
+			{}
+	};
+	extern std::vector<PJMesh> debugMeshes;
 
 	/* #### PJBUFFER #### */
 	struct PJBuffer {

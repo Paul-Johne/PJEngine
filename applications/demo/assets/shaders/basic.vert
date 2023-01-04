@@ -1,6 +1,6 @@
 #version 450
 
-/* Vertex Input Buffer => pos and color per vertex (no gl_VertexIndex needed) */
+/* Vertex Input Buffer => pos and color per vertex */
 layout(location = 0) in vec3 pos;
 layout(location = 1) in vec3 color;
 

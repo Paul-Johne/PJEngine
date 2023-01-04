@@ -5,12 +5,17 @@ using namespace std;
 int main() {
 	cout << "C++-Version: " << __cplusplus << endl;
 
+	/* Error Handler */
 	int res;
+	/* 3D Objects */
+	std::unique_ptr<pje::ModelLoader> modelLoader(std::make_unique<pje::ModelLoader>());
+	/* Append data in modelLoader to pje::debugMeshes */
+	pje::debugMeshes.insert(pje::debugMeshes.end(), modelLoader->m_models.begin(), modelLoader->m_models.end());
 
 	try {
-		//pje::modelLoader.get()->loadModel("some/wrong/data");
-
 		pje::context.startTimePoint = std::chrono::steady_clock::now();
+		cout << "[DEBUG] Current number of loaded 3d objects: " << modelLoader.get()->m_active_models << endl;
+		cout << "[DEBUG] Size of pje::debugMeshes: " << pje::debugMeshes.size() << endl;
 
 		res = pje::startGlfw3(pje::context.appName);
 		if (res != 0) {

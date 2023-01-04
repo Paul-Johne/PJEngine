@@ -82,7 +82,7 @@ uint32_t getMemoryTypeIndex(uint32_t memoryTypeBits, VkMemoryPropertyFlags flags
 	throw runtime_error("Error at getMemoryTypeIndex");
 }
 
-/* PJE : Used by assignPJBufferToVRAM() */
+/* PJE : Used by assignPJBufferToVRAM() - creates and binds VkBuffer and Memory of PJBuffer */
 void createPJBuffer(pje::PJBuffer& rawPJBuffer, VkDeviceSize size, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags) {
 	rawPJBuffer.flags = memoryFlags;
 	
@@ -217,8 +217,9 @@ void assignPJBufferToVRAM(vector<T> objectTarget, VkBufferUsageFlags vertexOrInd
 
 // ################################################################################################################################################################## //
 
+/* PJE : Used by setupRealtimeRendering() - during pipeline creation */
 void createDescriptorSetLayout(VkDescriptorSetLayout& rawLayout) {
-	VkDescriptorSetLayoutBinding layoutBinding;							// SLOT of VkDescriptorSetLayout
+	VkDescriptorSetLayoutBinding layoutBinding;							// SLOT (or binding) of VkDescriptorSetLayout
 	layoutBinding.binding = 0;											// layout(binding = n)
 	layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	layoutBinding.descriptorCount = 1;									// in shader code behind one binding => array[descriptorCount]
@@ -239,6 +240,7 @@ void createDescriptorSetLayout(VkDescriptorSetLayout& rawLayout) {
 	}
 }
 
+/* PJE : Used by setupRealtimeRendering() - sets will be allocated from pool */
 void createDescriptorPool(VkDescriptorPool& rawPool) {
 	VkDescriptorPoolSize poolSize;
 	poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -259,6 +261,7 @@ void createDescriptorPool(VkDescriptorPool& rawPool) {
 	}
 }
 
+/* PJE : Used by setupRealtimeRendering() - set allocation */
 void createDescriptorSet(VkDescriptorSet &rawDescriptorSet) {
 	VkDescriptorSetAllocateInfo allocateInfo;
 	allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -274,6 +277,7 @@ void createDescriptorSet(VkDescriptorSet &rawDescriptorSet) {
 	}
 }
 
+/* PJE : Used by setupRealtimeRendering() */
 void linkDescriptorSetWithBuffer(VkDescriptorSet& descriptorSet, pje::PJBuffer& uniformBuffer, VkDeviceSize sizeofUniformData) {
 	/* Telling descriptorSet what it is suppose to contain */
 	VkDescriptorBufferInfo bufferInfo;
@@ -299,7 +303,7 @@ void linkDescriptorSetWithBuffer(VkDescriptorSet& descriptorSet, pje::PJBuffer& 
 
 /* PJE : Sends uniform on RAM to VRAM */
 template <typename T>
-void assignUniformToVRAM(pje::PJBuffer& uniformBuffer, T data) {
+void assignUniformToVRAM(pje::PJBuffer& uniformBuffer, const T& data) {
 	VkDeviceSize uniformSize = sizeof(data);
 
 	createPJBuffer(
@@ -325,11 +329,12 @@ void cleanupRealtimeRendering(bool reset = false) {
 
 	/* should ONLY be used by stopVulkan() */
 	if (!reset) {
+		/* individual freeing of set must be allowed by pool via flag */
 		vkFreeDescriptorSets(pje::context.logicalDevice, pje::context.descriptorPool, 1, &pje::context.descriptorSet);
 		vkDestroyDescriptorPool(pje::context.logicalDevice, pje::context.descriptorPool, nullptr);
+
 		vkFreeMemory(pje::context.logicalDevice, pje::mvpUniformBuffer.deviceMemory, nullptr);
 		vkDestroyBuffer(pje::context.logicalDevice, pje::mvpUniformBuffer.buffer, nullptr);
-
 		vkFreeMemory(pje::context.logicalDevice, pje::indexBuffer.deviceMemory, nullptr);
 		vkDestroyBuffer(pje::context.logicalDevice, pje::indexBuffer.buffer, nullptr);
 		vkFreeMemory(pje::context.logicalDevice, pje::vertexBuffer.deviceMemory, nullptr);
@@ -456,8 +461,8 @@ void setupRealtimeRendering(bool reset = false) {
 		inputAssemblyInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;	// how single vertices will be assembled
 		inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
 
-		auto vertexBindingDesc = pje::Vertex::getInputBindingDesc();
-		auto vertexAttribsDesc = pje::Vertex::getInputAttributeDesc();
+		auto vertexBindingDesc = pje::PJVertex::getInputBindingDesc();
+		auto vertexAttribsDesc = pje::PJVertex::getInputAttributeDesc();
 
 		/* Usally sizes of vertices and their attributes are defined here
 		 * It has similar tasks to OpenGL's glBufferData(), glVertexAttribPointer() etc. (Vertex Shader => layout in) */
@@ -474,10 +479,10 @@ void setupRealtimeRendering(bool reset = false) {
 		rasterizationInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 		rasterizationInfo.pNext = nullptr;
 		rasterizationInfo.flags = 0;
-		rasterizationInfo.depthClampEnable = VK_FALSE;					// should vertices outside of the near-far-plane be rendered?
-		rasterizationInfo.rasterizerDiscardEnable = VK_FALSE;			// if true primitives won't be rendered but they may be used for other calculations
+		rasterizationInfo.depthClampEnable = VK_FALSE;
+		rasterizationInfo.rasterizerDiscardEnable = VK_FALSE;						// if true primitives won't be rendered but they may be used for other calculations
 		rasterizationInfo.polygonMode = VK_POLYGON_MODE_FILL;
-		rasterizationInfo.cullMode = VkCullModeFlagBits::VK_CULL_MODE_BACK_BIT;		// backface culling
+		rasterizationInfo.cullMode = VkCullModeFlagBits::VK_CULL_MODE_NONE;			// backface culling
 		rasterizationInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 		rasterizationInfo.depthBiasEnable = VK_FALSE;
 		rasterizationInfo.depthBiasConstantFactor = 0.0f;
@@ -628,7 +633,7 @@ void setupRealtimeRendering(bool reset = false) {
 		pipelineInfo.pViewportState = &viewportInfo;
 		pipelineInfo.pRasterizationState = &rasterizationInfo;
 		pipelineInfo.pMultisampleState = &multisampleInfo;
-		pipelineInfo.pDepthStencilState = nullptr;
+		pipelineInfo.pDepthStencilState = nullptr;						// depth buffer
 		pipelineInfo.pColorBlendState = &colorBlendInfo;
 		pipelineInfo.pDynamicState = &dynamicStateInfo;					// parts being changeable without building new pipeline
 		pipelineInfo.layout = pje::context.pipelineLayout;
@@ -637,6 +642,7 @@ void setupRealtimeRendering(bool reset = false) {
 		pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;				// deriving from other pipeline to reduce loading time
 		pipelineInfo.basePipelineIndex = -1;							// good coding style => invalid index
 
+		/* Pipeline Creation */
 		pje::context.result = vkCreateGraphicsPipelines(pje::context.logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pje::context.pipeline);
 		if (pje::context.result != VK_SUCCESS) {
 			cout << "Error at vkCreateGraphicsPipelines" << endl;
@@ -697,8 +703,8 @@ void setupRealtimeRendering(bool reset = false) {
 
 	if (!reset) {
 		/* Allocation of VkBuffer to transfer CPU vertices onto GPU */
-		assignPJBufferToVRAM(pje::debugVertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, pje::vertexBuffer);
-		assignPJBufferToVRAM(pje::debugIndices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, pje::indexBuffer);
+		assignPJBufferToVRAM(pje::debugMeshes[1].m_vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, pje::vertexBuffer);
+		assignPJBufferToVRAM(pje::debugMeshes[1].m_indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, pje::indexBuffer);
 		assignUniformToVRAM(pje::mvpUniformBuffer, pje::context.mvp);
 		/* Allocation of VkDescriptorPool und VkDescriptorSet to update uniforms */
 		createDescriptorPool(pje::context.descriptorPool);
@@ -747,8 +753,8 @@ void setupRealtimeRendering(bool reset = false) {
 		VkRect2D scissor{ {0, 0}, {pje::context.windowWidth, pje::context.windowHeight} };
 		vkCmdSetScissor(pje::context.commandBuffers[i], 0, 1, &scissor);
 
-		array<VkDeviceSize, 1> offsets { 0 };
 		// Bind => ordering to use certain buffer in VRAM
+		array<VkDeviceSize, 1> offsets{ 0 };
 		vkCmdBindVertexBuffers(pje::context.commandBuffers[i], 0, 1, &pje::vertexBuffer.buffer, offsets.data());
 		vkCmdBindIndexBuffer(pje::context.commandBuffers[i], pje::indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 		vkCmdBindDescriptorSets(
@@ -763,7 +769,7 @@ void setupRealtimeRendering(bool reset = false) {
 		);
 
 		// DRAW => drawing on swapchain images
-		vkCmdDrawIndexed(pje::context.commandBuffers[i], pje::debugIndices.size(), 1, 0, 0, 0);
+		vkCmdDrawIndexed(pje::context.commandBuffers[i], pje::debugMeshes[1].m_indices.size(), 1, 0, 0, 0);
 
 		vkCmdEndRenderPass(pje::context.commandBuffers[i]);
 
@@ -1390,13 +1396,21 @@ void updateMVP() {
 	auto frameTimePoint = std::chrono::steady_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(frameTimePoint - pje::context.startTimePoint).count() / 1000.0f;
 
-	glm::mat4 modelMatrix = glm::rotate(glm::mat4(1.0f), duration * glm::radians(20.0f), glm::vec3(0.0f, 0.0f, -1.0f));			// TODO (Up is z axis?)
-	glm::mat4 viewMatrix = glm::lookAt(glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));	// TODO (Up is z axis?)
+	glm::mat4 modelMatrix = glm::rotate(
+		glm::mat4(1.0f), 
+		duration * glm::radians(20.0f), 
+		glm::vec3(0.0f, -1.0f, 0.0f)
+	);
+	glm::mat4 viewMatrix = glm::lookAt(
+		glm::vec3(4.0f, 2.0f, 4.0f), 
+		glm::vec3(0.0f, 0.0f, 0.0f), 
+		glm::vec3(0.0f, 1.0f, 0.0f)
+	);
 	glm::mat4 projectionMatrix = glm::perspective(
 		glm::radians(60.0f),
 		pje::context.windowWidth / (float)pje::context.windowHeight,
-		0.5f,
-		5.0f
+		0.1f,
+		10.0f
 	);
 
 	/* Vulkan y axis goes down | OpenGL y axis goes up */
@@ -1411,7 +1425,7 @@ void updateMVP() {
 	vkUnmapMemory(pje::context.logicalDevice, pje::mvpUniformBuffer.deviceMemory);
 }
 
-/* PJE : */
+/* PJE : Called for each frame */
 /* Loop :
 *  1) Acquire next swapchain image related to some logical device
 *  2) Submit CommandBuffer designated for image of swapchain to VkQueue => Rendering

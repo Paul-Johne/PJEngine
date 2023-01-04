@@ -1,6 +1,6 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.14)
 
-project(demo)
+#project(demo)
 
 set(DEMO_SOURCES 
     "${CMAKE_CURRENT_SOURCE_DIR}/include/app.h"
@@ -13,7 +13,6 @@ set(DEMO_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/app.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/globalFuns.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/globalParams.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/modelloader.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/vef.cpp"
 )
 
@@ -33,6 +32,7 @@ set_property(
         CXX_STANDARD 17
 )
 
+# sets right value for __cplusplus parameter
 if(MSVC)
     target_compile_options(demo PUBLIC "/Zc:__cplusplus")
 endif()
@@ -72,3 +72,15 @@ compile_shaders(
 )
 
 add_dependencies(demo demo_shaders)
+
+# add 3D objects to binary project =====> TODO (Choosing objects dynamically)
+add_custom_command(
+    TARGET demo
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_3d.obj"
+            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_3d.obj"
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_3d.fbx"
+            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_3d.fbx"
+)
