@@ -184,9 +184,9 @@ void copyPJBufferToPJBuffer(pje::PJBuffer src, pje::PJBuffer dst, VkDeviceSize s
 	vkFreeCommandBuffers(pje::context.logicalDevice, pje::context.commandPool, 1, &commandBuffer);
 }
 
-/* PJE : Sends data on RAM to VRAM */
+/* PJE : Sends data on RAM to [VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT]-VRAM  */
 template <typename T>
-void assignPJBufferToVRAM(vector<T> objectTarget, VkBufferUsageFlags vertexOrIndexFlag, pje::PJBuffer& forLocalDevice) {
+void assignPJBufferToVRAM(pje::PJBuffer& localDeviceBuffer, vector<T> objectTarget, VkBufferUsageFlags vertexOrIndexFlag) {
 	VkDeviceSize objectByteSize = sizeof(T) * objectTarget.size();
 
 	createPJBuffer(
@@ -203,13 +203,14 @@ void assignPJBufferToVRAM(vector<T> objectTarget, VkBufferUsageFlags vertexOrInd
 	vkUnmapMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory);
 
 	createPJBuffer(
-		forLocalDevice,
+		localDeviceBuffer,
 		objectByteSize,
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT | vertexOrIndexFlag,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
 	);
 
-	copyPJBufferToPJBuffer(pje::stagingBuffer, forLocalDevice, objectByteSize);
+	// HOST_COHERENT buffer -> DEVICE_LOCAL buffer
+	copyPJBufferToPJBuffer(pje::stagingBuffer, localDeviceBuffer, objectByteSize);
 
 	vkDestroyBuffer(pje::context.logicalDevice, pje::stagingBuffer.buffer, nullptr);
 	vkFreeMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory, nullptr);
@@ -223,7 +224,7 @@ void createDescriptorSetLayout(VkDescriptorSetLayout& rawLayout) {
 	layoutBinding.binding = 0;											// layout(binding = n)
 	layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	layoutBinding.descriptorCount = 1;									// in shader code behind one binding => array[descriptorCount]
-	layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	layoutBinding.pImmutableSamplers = nullptr;
 
 	VkDescriptorSetLayoutCreateInfo layoutCreateInfo;
@@ -277,7 +278,7 @@ void createDescriptorSet(VkDescriptorSet &rawDescriptorSet) {
 	}
 }
 
-/* PJE : Used by setupRealtimeRendering() */
+/* PJE : Used by setupRealtimeRendering() - after assigning uniform */
 void linkDescriptorSetWithBuffer(VkDescriptorSet& descriptorSet, pje::PJBuffer& uniformBuffer, VkDeviceSize sizeofUniformData) {
 	/* Telling descriptorSet what it is suppose to contain */
 	VkDescriptorBufferInfo bufferInfo;
@@ -302,13 +303,11 @@ void linkDescriptorSetWithBuffer(VkDescriptorSet& descriptorSet, pje::PJBuffer& 
 }
 
 /* PJE : Sends uniform on RAM to VRAM */
-template <typename T>
-void assignUniformToVRAM(pje::PJBuffer& uniformBuffer, const T& data) {
-	VkDeviceSize uniformSize = sizeof(data);
-
+void assignUniformToVRAM(pje::PJBuffer& uniformBuffer, VkDeviceSize sizeofUniformData) {
+	// data may need some padding if data not always in vec4 (4x float) format
 	createPJBuffer(
 		uniformBuffer,
-		uniformSize,
+		sizeofUniformData,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
 	);
@@ -317,11 +316,7 @@ void assignUniformToVRAM(pje::PJBuffer& uniformBuffer, const T& data) {
 // ################################################################################################################################################################## //
 
 /* PJE : cleanupRealtimeRendering should only destroy context's swapchain when the program will be closed */
-void cleanupRealtimeRendering(bool reset = false) {
-	// also automatically by vkDestroyCommandPool
-	vkFreeCommandBuffers(pje::context.logicalDevice, pje::context.commandPool, pje::context.numberOfImagesInSwapchain, pje::context.commandBuffers.get());
-
-	/* CLEANUP => delete for all 'new' initializations */
+void pje::cleanupRealtimeRendering(bool reset) {
 	for (uint32_t i = 0; i < pje::context.numberOfImagesInSwapchain; i++) {
 		vkDestroyFramebuffer(pje::context.logicalDevice, pje::context.framebuffers[i], nullptr);
 		vkDestroyImageView(pje::context.logicalDevice, pje::context.imageViews[i], nullptr);
@@ -329,28 +324,95 @@ void cleanupRealtimeRendering(bool reset = false) {
 
 	/* should ONLY be used by stopVulkan() */
 	if (!reset) {
-		/* individual freeing of set must be allowed by pool via flag */
-		vkFreeDescriptorSets(pje::context.logicalDevice, pje::context.descriptorPool, 1, &pje::context.descriptorSet);
-		vkDestroyDescriptorPool(pje::context.logicalDevice, pje::context.descriptorPool, nullptr);
+		vkDestroyDescriptorPool(pje::context.logicalDevice, pje::context.descriptorPool, nullptr);			// also does vkFreeDescriptorSets() automatically
 
-		vkFreeMemory(pje::context.logicalDevice, pje::mvpUniformBuffer.deviceMemory, nullptr);
-		vkDestroyBuffer(pje::context.logicalDevice, pje::mvpUniformBuffer.buffer, nullptr);
+		vkFreeMemory(pje::context.logicalDevice, pje::uniformsBuffer.deviceMemory, nullptr);
+		vkDestroyBuffer(pje::context.logicalDevice, pje::uniformsBuffer.buffer, nullptr);
 		vkFreeMemory(pje::context.logicalDevice, pje::indexBuffer.deviceMemory, nullptr);
 		vkDestroyBuffer(pje::context.logicalDevice, pje::indexBuffer.buffer, nullptr);
 		vkFreeMemory(pje::context.logicalDevice, pje::vertexBuffer.deviceMemory, nullptr);
 		vkDestroyBuffer(pje::context.logicalDevice, pje::vertexBuffer.buffer, nullptr);
 
-		vkDestroyCommandPool(pje::context.logicalDevice, pje::context.commandPool, nullptr);
-
 		vkDestroyPipeline(pje::context.logicalDevice, pje::context.pipeline, nullptr);
 		vkDestroyDescriptorSetLayout(pje::context.logicalDevice, pje::context.descriptorSetLayout, nullptr);
 		vkDestroyRenderPass(pje::context.logicalDevice, pje::context.renderPass, nullptr);
 		vkDestroyPipelineLayout(pje::context.logicalDevice, pje::context.pipelineLayout, nullptr);
+
+		vkDestroyCommandPool(pje::context.logicalDevice, pje::context.commandPool, nullptr);				// also does vkFreeCommandBuffers() automatically
 		vkDestroySwapchainKHR(pje::context.logicalDevice, pje::context.swapchain, nullptr);
 	}
 }
 
-/* PJE : Used in startVulkan() and resetRealtimeRendering() */
+/* PJE : Used in setupRealtimeRendering() - declares what meshes to render later */
+void recordContextCommandBuffers(pje::PJMesh& renderable, uint32_t numberOfCommandBuffer) {
+	// Defines CommandBuffer behavior
+	VkCommandBufferBeginInfo commandBufferBeginInfo;
+	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	commandBufferBeginInfo.pNext = nullptr;
+	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;	// enables sending to GPU before GPU executes same command buffer
+	commandBufferBeginInfo.pInheritanceInfo = nullptr;								// for secondary command buffer (see VkCommandBufferAllocateInfo.level)
+
+	// Telling command buffer which render pass to start
+	VkRenderPassBeginInfo renderPassBeginInfo;
+	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	renderPassBeginInfo.pNext = nullptr;
+	renderPassBeginInfo.renderPass = pje::context.renderPass;
+	renderPassBeginInfo.renderArea.offset = { 0, 0 };
+	renderPassBeginInfo.renderArea.extent = { pje::context.windowWidth, pje::context.windowHeight };
+	renderPassBeginInfo.clearValueCount = 1;
+	renderPassBeginInfo.pClearValues = &pje::context.clearValueDefault;
+
+	/* RECORDING of CommandBuffers */
+	for (uint32_t i = 0; i < numberOfCommandBuffer; i++) {
+		/* START RECORDING */
+		pje::context.result = vkBeginCommandBuffer(pje::context.commandBuffers[i], &commandBufferBeginInfo);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkBeginCommandBuffer of Command Buffer No.:\t" << pje::context.commandBuffers[i] << endl;
+			throw runtime_error("Error at vkBeginCommandBuffer");
+		}
+
+		renderPassBeginInfo.framebuffer = pje::context.framebuffers[i];											// framebuffer that the current command buffer is associated with
+		vkCmdBeginRenderPass(pje::context.commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);	// connects CommandBuffer to Framebuffer ; CommandBuffer knows RenderPass
+
+		// BIND => decide for an pipeline and use it for graphical calculation
+		vkCmdBindPipeline(pje::context.commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pje::context.pipeline);
+
+		// SET dynamic states for vkCmdDraw
+		VkViewport viewport{ 0.0f, 0.0f, pje::context.windowWidth, pje::context.windowHeight, 0.0f, 1.0f };
+		vkCmdSetViewport(pje::context.commandBuffers[i], 0, 1, &viewport);
+		VkRect2D scissor{ {0, 0}, {pje::context.windowWidth, pje::context.windowHeight} };
+		vkCmdSetScissor(pje::context.commandBuffers[i], 0, 1, &scissor);
+
+		// BIND => ordering to use certain buffer in VRAM
+		array<VkDeviceSize, 1> offsets{ 0 };
+		vkCmdBindVertexBuffers(pje::context.commandBuffers[i], 0, 1, &pje::vertexBuffer.buffer, offsets.data());
+		vkCmdBindIndexBuffer(pje::context.commandBuffers[i], pje::indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdBindDescriptorSets(
+			pje::context.commandBuffers[i],
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			pje::context.pipelineLayout,
+			0,
+			1,
+			&pje::context.descriptorSet,
+			0,
+			nullptr
+		);
+
+		// DRAW => drawing on swapchain images
+		vkCmdDrawIndexed(pje::context.commandBuffers[i], renderable.m_indices.size(), 1, 0, 0, 0);
+
+		vkCmdEndRenderPass(pje::context.commandBuffers[i]);
+
+		pje::context.result = vkEndCommandBuffer(pje::context.commandBuffers[i]);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkEndCommandBuffer of Command Buffer No.:\t" << pje::context.commandBuffers[i] << endl;
+			throw runtime_error("Error at vkEndCommandBuffer");
+		}
+		/* END RECORDING */
+	}
+}
+
+/* PJE : Used in startVulkan() and resetRealtimeRendering() - creates Pipeline and CommandBufferPool*/
 void setupRealtimeRendering(bool reset = false) {
 	/* swapchainInfo for building a Swapchain */
 	VkSwapchainCreateInfoKHR swapchainInfo;
@@ -383,13 +445,16 @@ void setupRealtimeRendering(bool reset = false) {
 	/* Gets images of Swapchain => should be already declared via swapchainInfo.minImageCount */
 	pje::context.numberOfImagesInSwapchain = 0;
 	vkGetSwapchainImagesKHR(pje::context.logicalDevice, pje::context.swapchain, &pje::context.numberOfImagesInSwapchain, nullptr);
-	auto swapchainImages = vector<VkImage>(pje::context.numberOfImagesInSwapchain);
 
 	/* swapchainImages will hold the reference to VkImage(s), BUT to access them there has to be VkImageView(s) */
+	auto swapchainImages = vector<VkImage>(pje::context.numberOfImagesInSwapchain);
 	pje::context.result = vkGetSwapchainImagesKHR(pje::context.logicalDevice, pje::context.swapchain, &pje::context.numberOfImagesInSwapchain, swapchainImages.data());
 	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkGetSwapchainImagesKHR" << endl;
 		throw runtime_error("Error at vkGetSwapchainImagesKHR");
+	}
+	else {
+		cout << "[DEBUG] Number of Images in Swapchain: " << pje::context.numberOfImagesInSwapchain << endl;
 	}
 
 	/* ImageViewInfo for building ImageView ! TODO ! */
@@ -421,15 +486,26 @@ void setupRealtimeRendering(bool reset = false) {
 		if (pje::context.result != VK_SUCCESS) {
 			cout << "Error at vkCreateImageView" << endl;
 			throw runtime_error("Error at vkCreateImageView");
+		}
+	}
 
+	/* VkCommandPool holds CommandBuffer which are necessary to tell Vulkan what to do */
+	if (!reset) {
+		VkCommandPoolCreateInfo commandPoolInfo;
+		commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+		commandPoolInfo.pNext = nullptr;
+		commandPoolInfo.flags = 0;												// reset record of single frame buffer | set to buffer to 'transient' for optimisation
+		commandPoolInfo.queueFamilyIndex = pje::context.choosenQueueFamily;		// must be the same as in VkDeviceQueueCreateInfo of the logical device & Queue Family 'VK_QUEUE_GRAPHICS_BIT' must be 1
+
+		pje::context.result = vkCreateCommandPool(pje::context.logicalDevice, &commandPoolInfo, nullptr, &pje::context.commandPool);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkCreateCommandPool" << endl;
+			throw runtime_error("Error at vkCreateCommandPool");
 		}
 	}
 
 	/* PIPELINE BUILDING - START */
 	if (!reset) {
-		/* Declaring VkDescriptorSetLayout for Pipeline */
-		createDescriptorSetLayout(pje::context.descriptorSetLayout);
-
 		/* Viewport */
 		VkViewport initViewport;
 		initViewport.x = 0.0f;							// upper left corner
@@ -482,7 +558,7 @@ void setupRealtimeRendering(bool reset = false) {
 		rasterizationInfo.depthClampEnable = VK_FALSE;
 		rasterizationInfo.rasterizerDiscardEnable = VK_FALSE;						// if true primitives won't be rendered but they may be used for other calculations
 		rasterizationInfo.polygonMode = VK_POLYGON_MODE_FILL;
-		rasterizationInfo.cullMode = VkCullModeFlagBits::VK_CULL_MODE_NONE;			// backface culling
+		rasterizationInfo.cullMode = VkCullModeFlagBits::VK_CULL_MODE_BACK_BIT;		// backface culling
 		rasterizationInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 		rasterizationInfo.depthBiasEnable = VK_FALSE;
 		rasterizationInfo.depthBiasConstantFactor = 0.0f;
@@ -517,13 +593,16 @@ void setupRealtimeRendering(bool reset = false) {
 		colorBlendInfo.pAttachments = &colorBlendAttachment;
 		fill_n(colorBlendInfo.blendConstants, 4, 0.0f);			// sets rgba to 0.0f
 
+		/* Declaring VkDescriptorSetLayout for Pipeline */
+		createDescriptorSetLayout(pje::context.descriptorSetLayout);
+
 		// pipelineLayoutInfo declares LAYOUTS and UNIFORMS for compiled shader code
 		VkPipelineLayoutCreateInfo pipelineLayoutInfo;
 		pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 		pipelineLayoutInfo.pNext = nullptr;
 		pipelineLayoutInfo.flags = 0;
 		pipelineLayoutInfo.setLayoutCount = 1;
-		pipelineLayoutInfo.pSetLayouts = &pje::context.descriptorSetLayout;
+		pipelineLayoutInfo.pSetLayouts = &pje::context.descriptorSetLayout;		//  layout(set = n..)
 		pipelineLayoutInfo.pushConstantRangeCount = 0;
 		pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
@@ -545,7 +624,7 @@ void setupRealtimeRendering(bool reset = false) {
 		multisampleInfo.alphaToCoverageEnable = VK_FALSE;
 		multisampleInfo.alphaToOneEnable = VK_FALSE;
 
-		/* ATTACHMENTs */
+		/* ATTACHMENTs and SUBPASSEs - START */
 
 		// VkAttachmentDescription is held by renderPass for its subpasses (VkAttachmentReference.attachment uses VkAttachmentDescription)
 		VkAttachmentDescription attachmentDescription;
@@ -585,6 +664,7 @@ void setupRealtimeRendering(bool reset = false) {
 		subpassDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		subpassDependency.dependencyFlags = 0;
 
+		/* ATTACHMENTs and SUBPASSEs - END */
 		/* RENDERPASS - START */
 
 		/* renderPass represents a single execution of the rendering pipeline */
@@ -651,6 +731,16 @@ void setupRealtimeRendering(bool reset = false) {
 	}
 	/* PIPELINE BUILDING - END */
 
+	/* uniforms for shaders in pipeline */
+	if (!reset) {
+		/* Allocation of COHERENT VkBuffer to transfer uniforms onto GPU */
+		assignUniformToVRAM(pje::uniformsBuffer, sizeof(pje::Uniforms));
+		/* Allocation of VkDescriptorPool und VkDescriptorSet to update uniforms */
+		createDescriptorPool(pje::context.descriptorPool);
+		createDescriptorSet(pje::context.descriptorSet);
+		linkDescriptorSetWithBuffer(pje::context.descriptorSet, pje::uniformsBuffer, sizeof(pje::Uniforms));
+	}
+
 	/* Framebuffer => bridge between CommandBuffer and Rendertargets/Image Views (Vulkan communication buffer) */
 	pje::context.framebuffers = make_unique<VkFramebuffer[]>(pje::context.numberOfImagesInSwapchain);
 	for (uint32_t i = 0; i < pje::context.numberOfImagesInSwapchain; i++) {
@@ -671,22 +761,8 @@ void setupRealtimeRendering(bool reset = false) {
 			throw runtime_error("Error at vkCreateFramebuffer");
 		}
 	}
-
-	/* VkCommandPool holds CommandBuffer which are necessary to tell Vulkan what to do */
-	if (!reset) {
-		VkCommandPoolCreateInfo commandPoolInfo;
-		commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-		commandPoolInfo.pNext = nullptr;
-		commandPoolInfo.flags = 0;												// reset record of single frame buffer | set to buffer to 'transient' for optimisation
-		commandPoolInfo.queueFamilyIndex = pje::context.choosenQueueFamily;		// must be the same as in VkDeviceQueueCreateInfo of the logical device & Queue Family 'VK_QUEUE_GRAPHICS_BIT' must be 1
-
-		pje::context.result = vkCreateCommandPool(pje::context.logicalDevice, &commandPoolInfo, nullptr, &pje::context.commandPool);
-		if (pje::context.result != VK_SUCCESS) {
-			cout << "Error at vkCreateCommandPool" << endl;
-			throw runtime_error("Error at vkCreateCommandPool");
-		}
-	}
 	
+	/* CommandBuffer for rendering */
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo;
 	commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	commandBufferAllocateInfo.pNext = nullptr;
@@ -701,85 +777,11 @@ void setupRealtimeRendering(bool reset = false) {
 		throw runtime_error("Error at setupRealtimeRendering::vkAllocateCommandBuffers");
 	}
 
-	if (!reset) {
-		/* Allocation of VkBuffer to transfer CPU vertices onto GPU */
-		assignPJBufferToVRAM(pje::debugMeshes[1].m_vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, pje::vertexBuffer);
-		assignPJBufferToVRAM(pje::debugMeshes[1].m_indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, pje::indexBuffer);
-		assignUniformToVRAM(pje::mvpUniformBuffer, pje::context.mvp);
-		/* Allocation of VkDescriptorPool und VkDescriptorSet to update uniforms */
-		createDescriptorPool(pje::context.descriptorPool);
-		createDescriptorSet(pje::context.descriptorSet);
-		linkDescriptorSetWithBuffer(pje::context.descriptorSet, pje::mvpUniformBuffer, sizeof(pje::context.mvp));
-	}
-
-	/* CommandBuffer RECORDING => SET command inside of the command buffer */
-
-	// Begin Recording
-	VkCommandBufferBeginInfo commandBufferBeginInfo;
-	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	commandBufferBeginInfo.pNext = nullptr;
-	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;	// enables sending to GPU before GPU executes same command buffer
-	commandBufferBeginInfo.pInheritanceInfo = nullptr;								// for secondary command buffer (see VkCommandBufferAllocateInfo.level)
-
-	// Telling command buffer which render pass to start
-	// outside of for loop => reusable for each command buffer
-	VkRenderPassBeginInfo renderPassBeginInfo;
-	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	renderPassBeginInfo.pNext = nullptr;
-	renderPassBeginInfo.renderPass = pje::context.renderPass;
-	renderPassBeginInfo.renderArea.offset = { 0, 0 };
-	renderPassBeginInfo.renderArea.extent = { pje::context.windowWidth, pje::context.windowHeight };
-	renderPassBeginInfo.clearValueCount = 1;
-	renderPassBeginInfo.pClearValues = &pje::context.clearValueDefault;
-
-	/* RECORDING of CommandBuffers */
-	for (uint32_t i = 0; i < pje::context.numberOfImagesInSwapchain; i++) {
-		/* START RECORDING */
-		pje::context.result = vkBeginCommandBuffer(pje::context.commandBuffers[i], &commandBufferBeginInfo);
-		if (pje::context.result != VK_SUCCESS) {
-			cout << "Error at vkBeginCommandBuffer of Command Buffer No.:\t" << pje::context.commandBuffers[i] << endl;
-			throw runtime_error("Error at vkBeginCommandBuffer");
-		}
-
-		renderPassBeginInfo.framebuffer = pje::context.framebuffers[i];											// framebuffer that the current command buffer is associated with
-		vkCmdBeginRenderPass(pje::context.commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);	// connects CommandBuffer to Framebuffer ; CommandBuffer knows RenderPass
-
-		// BIND => decide for an pipeline and use it for graphical calculation
-		vkCmdBindPipeline(pje::context.commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pje::context.pipeline);
-
-		// SET dynamic states for vkCmdDraw
-		VkViewport viewport { 0.0f, 0.0f, pje::context.windowWidth, pje::context.windowHeight, 0.0f, 1.0f };
-		vkCmdSetViewport(pje::context.commandBuffers[i], 0, 1, &viewport);
-		VkRect2D scissor{ {0, 0}, {pje::context.windowWidth, pje::context.windowHeight} };
-		vkCmdSetScissor(pje::context.commandBuffers[i], 0, 1, &scissor);
-
-		// Bind => ordering to use certain buffer in VRAM
-		array<VkDeviceSize, 1> offsets{ 0 };
-		vkCmdBindVertexBuffers(pje::context.commandBuffers[i], 0, 1, &pje::vertexBuffer.buffer, offsets.data());
-		vkCmdBindIndexBuffer(pje::context.commandBuffers[i], pje::indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-		vkCmdBindDescriptorSets(
-			pje::context.commandBuffers[i], 
-			VK_PIPELINE_BIND_POINT_GRAPHICS, 
-			pje::context.pipelineLayout, 
-			0, 
-			1, 
-			&pje::context.descriptorSet,
-			0,
-			nullptr
-		);
-
-		// DRAW => drawing on swapchain images
-		vkCmdDrawIndexed(pje::context.commandBuffers[i], pje::debugMeshes[1].m_indices.size(), 1, 0, 0, 0);
-
-		vkCmdEndRenderPass(pje::context.commandBuffers[i]);
-
-		pje::context.result = vkEndCommandBuffer(pje::context.commandBuffers[i]);
-		if (pje::context.result != VK_SUCCESS) {
-			cout << "Error at vkEndCommandBuffer of Command Buffer No.:\t" << pje::context.commandBuffers[i] << endl;
-			throw runtime_error("Error at vkEndCommandBuffer");
-		}
-		/* END RECORDING */
-	}
+	/* Allocation of VkBuffer to transfer CPU vertices onto GPU */
+	assignPJBufferToVRAM(pje::vertexBuffer, pje::debugMeshes[1].m_vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+	assignPJBufferToVRAM(pje::indexBuffer, pje::debugMeshes[1].m_indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+	/* Record CommandBuffers designated to rendering */
+	recordContextCommandBuffers(pje::debugMeshes[1], pje::context.numberOfImagesInSwapchain);
 }
 
 /* GLFW: Callback for GLFWwindowsizefun */
@@ -809,7 +811,7 @@ void resetRealtimeRendering(GLFWwindow* window, int width, int height) {
 
 	vkDeviceWaitIdle(pje::context.logicalDevice);
 
-	cleanupRealtimeRendering(true);
+	pje::cleanupRealtimeRendering(true);
 	setupRealtimeRendering(true);
 	vkDestroySwapchainKHR(pje::context.logicalDevice, oldSwapchain, nullptr);
 }
@@ -1280,7 +1282,7 @@ void pje::stopVulkan() {
 	vkDestroySemaphore(pje::context.logicalDevice, pje::context.semaphoreSwapchainImageReceived, nullptr);
 	vkDestroySemaphore(pje::context.logicalDevice, pje::context.semaphoreRenderingFinished, nullptr);
 
-	/* vkDestroy Pipeline etc. */
+	/* vkDestroy vkFree etc. */
 	cleanupRealtimeRendering();
 
 	vkDestroyShaderModule(pje::context.logicalDevice, pje::context.shaderModuleBasicVert, nullptr);
@@ -1306,8 +1308,8 @@ void pje::stopVulkan() {
  *    Fences => CPU semaphore | VkSemaphores => GPU semaphore
  */
 void drawFrameOnSurface() {
-		/* CPU waits here for signaled fence(s)*/
 	if (!pje::context.isWindowMinimized) {
+		/* CPU waits here for signaled fence(s)*/
 		pje::context.result = vkWaitForFences(
 			pje::context.logicalDevice,
 			1,
@@ -1391,22 +1393,33 @@ void drawFrameOnSurface() {
 	}
 }
 
+/* PJE : uploads uniform data */
+void updateUniformsBuffer() {
+	/* Updating VkBuffer (uniform) on VRAM */
+	void* rawPointer;
+	vkMapMemory(pje::context.logicalDevice, pje::uniformsBuffer.deviceMemory, 0, VK_WHOLE_SIZE, 0, &rawPointer);
+	memcpy(rawPointer, &pje::uniforms, sizeof(pje::uniforms));
+	vkUnmapMemory(pje::context.logicalDevice, pje::uniformsBuffer.deviceMemory);
+}
+
 /* PJE : Modifying modelMatrix in relation to passed time since app start */
 void updateMVP() {
 	auto frameTimePoint = std::chrono::steady_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(frameTimePoint - pje::context.startTimePoint).count() / 1000.0f;
 
-	glm::mat4 modelMatrix = glm::rotate(
-		glm::mat4(1.0f), 
-		duration * glm::radians(20.0f), 
+	pje::uniforms.modelMatrix = glm::rotate(
+		glm::mat4(1.0f),					// identity matrix
+		duration * glm::radians(20.0f),
 		glm::vec3(0.0f, -1.0f, 0.0f)
 	);
-	glm::mat4 viewMatrix = glm::lookAt(
-		glm::vec3(4.0f, 2.0f, 4.0f), 
+
+	pje::uniforms.viewMatrix = glm::lookAt(		// inverse modelMatrix_cam
+		glm::vec3(4.0f, 2.0f, 4.0f),		// eye in world space (usally world moves around camera and NOT the other way around)
 		glm::vec3(0.0f, 0.0f, 0.0f), 
 		glm::vec3(0.0f, 1.0f, 0.0f)
 	);
-	glm::mat4 projectionMatrix = glm::perspective(
+
+	pje::uniforms.projectionMatrix = glm::perspective(
 		glm::radians(60.0f),
 		pje::context.windowWidth / (float)pje::context.windowHeight,
 		0.1f,
@@ -1414,15 +1427,11 @@ void updateMVP() {
 	);
 
 	/* Vulkan y axis goes down | OpenGL y axis goes up */
-	projectionMatrix[1][1] *= -1;
+	pje::uniforms.projectionMatrix[1][1] *= -1;
 
-	pje::context.mvp = projectionMatrix * viewMatrix * modelMatrix;
+	pje::uniforms.mvp = pje::uniforms.projectionMatrix * pje::uniforms.viewMatrix * pje::uniforms.modelMatrix;
 
-	/* Updating uniform on VRAM */
-	void* rawPointer;
-	vkMapMemory(pje::context.logicalDevice, pje::mvpUniformBuffer.deviceMemory, 0, VK_WHOLE_SIZE, 0, &rawPointer);
-	memcpy(rawPointer, &pje::context.mvp, sizeof(pje::context.mvp));
-	vkUnmapMemory(pje::context.logicalDevice, pje::mvpUniformBuffer.deviceMemory);
+	updateUniformsBuffer();
 }
 
 /* PJE : Called for each frame */

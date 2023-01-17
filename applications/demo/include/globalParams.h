@@ -51,7 +51,6 @@ namespace pje {
 		VkCommandPool						commandPool;
 		std::unique_ptr<VkCommandBuffer[]>	commandBuffers;
 
-		glm::mat4 mvp;
 		VkDescriptorSetLayout descriptorSetLayout;
 		VkDescriptorPool descriptorPool;
 		VkDescriptorSet descriptorSet;
@@ -70,15 +69,25 @@ namespace pje {
 	};
 	extern Context context;
 
+	/* #### UNIFORMS #### */
+	struct Uniforms {
+		glm::mat4 mvp;
+		glm::mat4 modelMatrix;
+		glm::mat4 viewMatrix;
+		glm::mat4 projectionMatrix;
+	};
+	extern Uniforms uniforms;
+
 	/* #### VERTEX #### */
 	class PJVertex {
 	public:
 		glm::vec3 m_position;
 		glm::vec3 m_color;
+		glm::vec3 m_normal;
 
 		PJVertex() = delete;
-		PJVertex(glm::vec3 position, glm::vec3 color) :
-			m_position(position), m_color(color) {}									// initialization list
+		PJVertex(glm::vec3 position, glm::vec3 color, glm::vec3 normal) :
+			m_position(position), m_color(color), m_normal(normal) {}			// initialization list
 		
 		~PJVertex()
 			{}
@@ -95,8 +104,8 @@ namespace pje {
 
 		/* integrated into vulkan pipeline */
 		/* array size equals amount of members in pje::PJVertex */
-		static std::array<VkVertexInputAttributeDescription, 2> getInputAttributeDesc() {
-			std::array<VkVertexInputAttributeDescription, 2> attributes;
+		static std::array<VkVertexInputAttributeDescription, 3> getInputAttributeDesc() {
+			std::array<VkVertexInputAttributeDescription, 3> attributes;
 			
 			attributes[0].location = 0;											// Vertex Input Buffer => layout(location = 0)
 			attributes[0].binding = 0;											// index of a VkVertexInputBindingDescription
@@ -106,7 +115,12 @@ namespace pje {
 			attributes[1].location = 1;											// Vertex Input Buffer => layout(location = 1)
 			attributes[1].binding = 0;											// index of a VkVertexInputBindingDescription
 			attributes[1].format = VkFormat::VK_FORMAT_R32G32B32_SFLOAT;		// vec3
-			attributes[1].offset = offsetof(PJVertex, m_color);					// OR: 2 * 4 Byte = 8
+			attributes[1].offset = offsetof(PJVertex, m_color);					// OR: 3 * 4 Byte = 12
+
+			attributes[2].location = 2;
+			attributes[2].binding = 0;
+			attributes[2].format = VkFormat::VK_FORMAT_R32G32B32_SFLOAT;
+			attributes[2].offset = offsetof(PJVertex, m_normal);				// OR: 6 * 4 Byte = 24
 
 			return attributes;
 		}
@@ -120,8 +134,8 @@ namespace pje {
 		std::vector<PJVertex>	m_vertices;
 		std::vector<uint32_t>	m_indices;
 
-		PJMesh() = delete;
-		PJMesh(std::vector<PJVertex> vertices, std::vector<uint32_t> indices) :
+		/* m_vertices copies data of vertices */
+		PJMesh(const std::vector<PJVertex>& vertices, const std::vector<uint32_t>& indices) :
 			m_vertices(vertices), m_indices(indices) {}
 
 		~PJMesh()
@@ -139,5 +153,5 @@ namespace pje {
 	extern PJBuffer stagingBuffer;
 	extern PJBuffer vertexBuffer;
 	extern PJBuffer indexBuffer;
-	extern PJBuffer mvpUniformBuffer;
+	extern PJBuffer uniformsBuffer;
 }

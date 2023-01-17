@@ -15,7 +15,7 @@ int main() {
 	try {
 		pje::context.startTimePoint = std::chrono::steady_clock::now();
 		cout << "[DEBUG] Current number of loaded 3d objects: " << modelLoader.get()->m_active_models << endl;
-		cout << "[DEBUG] Size of pje::debugMeshes: " << pje::debugMeshes.size() << endl;
+		cout << "[DEBUG] Current number of meshes in pje::debugMeshes: " << pje::debugMeshes.size() << endl;
 
 		res = pje::startGlfw3(pje::context.appName);
 		if (res != 0) {
@@ -35,6 +35,7 @@ int main() {
 	}
 	catch (exception& ex) {
 		cout << "Exception thrown: " << ex.what() << endl;
+		pje::cleanupRealtimeRendering();
 		return -1;
 	}
 
