@@ -27,7 +27,7 @@ namespace pje {
 
 		VkPhysicalDeviceType			preferredPhysicalDeviceType = VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
 		std::vector<VkQueueFlagBits>	neededFamilyQueueAttributes = { VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT };
-		uint32_t						neededSurfaceImages = 2;
+		const uint32_t					neededSurfaceImages = 2;
 		VkPresentModeKHR				neededPresentationMode = VkPresentModeKHR::VK_PRESENT_MODE_IMMEDIATE_KHR;
 
 		uint32_t						choosenPhysicalDevice;						// dynamically by selectGPU()
@@ -37,8 +37,18 @@ namespace pje {
 
 		VkSwapchainKHR						swapchain = VK_NULL_HANDLE;
 		uint32_t							numberOfImagesInSwapchain = 0;
-		std::unique_ptr<VkImageView[]>		imageViews;
-		std::unique_ptr<VkFramebuffer[]>	framebuffers;
+		std::unique_ptr<VkImageView[]>		swapchainImageViews;
+		std::unique_ptr<VkFramebuffer[]>	swapchainFramebuffers;
+
+		VkSampleCountFlagBits				msaaFactor = VkSampleCountFlagBits::VK_SAMPLE_COUNT_4_BIT;
+
+		VkDeviceMemory						msaaImageMemory;
+		std::unique_ptr<VkImage>			msaaImage;
+		std::unique_ptr<VkImageView>		msaaImageView;
+
+		VkDeviceMemory						depthImageMemory;
+		std::unique_ptr<VkImage>			depthImage;
+		std::unique_ptr<VkImageView>		depthImageView;
 
 		VkShaderModule									shaderModuleBasicVert;
 		VkShaderModule									shaderModuleBasicFrag;
@@ -56,7 +66,8 @@ namespace pje {
 		VkDescriptorSet descriptorSet;
 
 		const VkFormat		outputFormat = VkFormat::VK_FORMAT_B8G8R8A8_UNORM;		// VkFormat 44
-		const VkClearValue	clearValueDefault = { 0.588f, 0.294f, 0.0f, 1.0f };		// DEFAULT BACKGROUND
+		const VkFormat		depthFormat = VkFormat::VK_FORMAT_D32_SFLOAT;
+		const float			clearValueDefault[4] = {0.0f, 0.0f, 0.0f, 1.0f};		// DEFAULT BACKGROUND
 
 		VkSemaphore	semaphoreSwapchainImageReceived;
 		VkSemaphore	semaphoreRenderingFinished;
