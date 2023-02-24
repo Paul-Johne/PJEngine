@@ -9,6 +9,7 @@
 	#include <vulkan/vulkan.h>
 	#include <GLFW/glfw3.h>
 	#include <glm/glm.hpp>
+	#include <assimp/texture.h>
 	#include <imgui.h>
 
 /* Collection of global parameters */
@@ -33,7 +34,7 @@ namespace pje {
 		uint32_t						choosenPhysicalDevice;						// dynamically by selectGPU()
 		uint32_t						choosenQueueFamily;							// dynamically by selectGPU()
 
-		VkQueue	queueForPrototyping;
+		VkQueue							queueForPrototyping;
 
 		VkSwapchainKHR						swapchain = VK_NULL_HANDLE;
 		uint32_t							numberOfImagesInSwapchain = 0;
@@ -72,6 +73,7 @@ namespace pje {
 		VkSemaphore	semaphoreSwapchainImageReceived;
 		VkSemaphore	semaphoreRenderingFinished;
 		VkFence		fenceRenderFinished;											// 2 States: signaled, unsignaled
+		VkFence		fenceCopiedBuffer;
 
 		GLFWwindow* window;
 		bool		isWindowMinimized = false;
@@ -89,16 +91,25 @@ namespace pje {
 	};
 	extern Uniforms uniforms;
 
+	/* #### STORAGE BUFFER #### */
+	struct BoneRef {
+		uint32_t boneId;
+		float weight;
+	};
+	extern std::vector<BoneRef> boneRefs;
+	// extern std::vector<glm::mat4> boneMatrices;
+
 	/* #### VERTEX #### */
 	class PJVertex {
 	public:
 		glm::vec3 m_position;
 		glm::vec3 m_color;
 		glm::vec3 m_normal;
+		glm::vec2 m_boneRange;
 
 		PJVertex() = delete;
-		PJVertex(glm::vec3 position, glm::vec3 color, glm::vec3 normal) :
-			m_position(position), m_color(color), m_normal(normal) {}			// initialization list
+		PJVertex(glm::vec3 position, glm::vec3 color, glm::vec3 normal, glm::uvec2 boneRange = glm::uvec2(0, 0)) :
+			m_position(position), m_color(color), m_normal(normal), m_boneRange(boneRange) {}	// initialization list
 		
 		~PJVertex()
 			{}
@@ -115,8 +126,8 @@ namespace pje {
 
 		/* integrated into vulkan pipeline */
 		/* array size equals amount of members in pje::PJVertex */
-		static std::array<VkVertexInputAttributeDescription, 3> getInputAttributeDesc() {
-			std::array<VkVertexInputAttributeDescription, 3> attributes;
+		static std::array<VkVertexInputAttributeDescription, 4> getInputAttributeDesc() {
+			std::array<VkVertexInputAttributeDescription, 4> attributes;
 			
 			attributes[0].location = 0;											// Vertex Input Buffer => layout(location = 0)
 			attributes[0].binding = 0;											// index of a VkVertexInputBindingDescription
@@ -133,6 +144,11 @@ namespace pje {
 			attributes[2].format = VkFormat::VK_FORMAT_R32G32B32_SFLOAT;
 			attributes[2].offset = offsetof(PJVertex, m_normal);				// OR: 6 * 4 Byte = 24
 
+			attributes[3].location = 3;
+			attributes[3].binding = 0;
+			attributes[3].format = VkFormat::VK_FORMAT_R32G32_UINT;
+			attributes[3].offset = offsetof(PJVertex, m_boneRange);
+
 			return attributes;
 		}
 	};
@@ -144,25 +160,39 @@ namespace pje {
 	public:
 		std::vector<PJVertex>	m_vertices;
 		std::vector<uint32_t>	m_indices;
+		uint32_t				m_offsetToPriorMeshes;
 
 		/* m_vertices copies data of vertices */
-		PJMesh(const std::vector<PJVertex>& vertices, const std::vector<uint32_t>& indices) :
-			m_vertices(vertices), m_indices(indices) {}
+		PJMesh(const std::vector<PJVertex>& vertices, const std::vector<uint32_t>& indices, const uint32_t offset) :
+			m_vertices(vertices), m_indices(indices) , m_offsetToPriorMeshes(offset) {}
 
 		~PJMesh()
 			{}
 	};
-	extern std::vector<PJMesh> debugMeshes;
+	extern std::vector<PJMesh>	debugMesh;
+
+	/* #### Model #### */
+	struct PJModel {
+		std::vector<PJMesh>				meshes;
+		std::vector<const aiTexture*>	textures;
+		std::string						modelPath;
+		bool							centered;
+	};
+	extern std::vector<pje::PJModel>	loadedModels;
 
 	/* #### PJBUFFER #### */
 	struct PJBuffer {
-		VkBuffer		buffer;
-		VkDeviceMemory	deviceMemory;
+		VkBuffer				buffer;
+		VkDeviceSize			size;
 
-		VkMemoryPropertyFlags flags;
+		VkDeviceMemory			deviceMemory;
+		VkMemoryPropertyFlags	flags;
 	};
 	extern PJBuffer stagingBuffer;
 	extern PJBuffer vertexBuffer;
 	extern PJBuffer indexBuffer;
+
 	extern PJBuffer uniformsBuffer;
+	extern PJBuffer storeBoneRefs;
+	extern PJBuffer storeBoneMatrices;
 }

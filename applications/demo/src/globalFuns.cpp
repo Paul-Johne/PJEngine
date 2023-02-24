@@ -2,7 +2,7 @@
 
 using namespace std;
 
-/* Reads spv Files into RAM for GraphicsPipeline */
+/* Reads spv Files into RAM */
 vector<char> pje::readSpirvFile(const string& filename) {
 	// using ios:ate FLAG to retrieve fileSize => ate sets pointer to the end (ate => at end) ; _Prot default is set to 64
 	ifstream currentFile(filename, ios::binary | ios::ate);
@@ -29,7 +29,7 @@ vector<char> pje::readSpirvFile(const string& filename) {
 
 // ################################################################################################################################################################## //
 
-/* PJE : Transforming shader code of type vector<char> into VkShaderModule */
+/* Transforming shader code into VkShaderModule */
 void pje::createShaderModule(const vector<char>& spvCode, VkShaderModule& shaderModule) {
 	VkShaderModuleCreateInfo shaderModuleInfo;
 	shaderModuleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -45,7 +45,7 @@ void pje::createShaderModule(const vector<char>& spvCode, VkShaderModule& shader
 	}
 }
 
-/* PJE : Adds element (module) to pje::shaderStageInfos */
+/* Adds VkShaderModule to pje::shaderStageInfos */
 void pje::addShaderModuleToShaderStages(VkShaderModule newModule, VkShaderStageFlagBits stageType, const char* shaderEntryPoint) {
 	VkPipelineShaderStageCreateInfo shaderStageCreateInfo;
 
@@ -60,19 +60,19 @@ void pje::addShaderModuleToShaderStages(VkShaderModule newModule, VkShaderStageF
 	pje::context.shaderStageInfos.push_back(shaderStageCreateInfo);
 }
 
-/* PJE : Clears globalParam that will be requested by the GraphicsPipeline */
+/* Clears pje::context.shaderStageInfos */
 void clearShaderStages() {
 	pje::context.shaderStageInfos.clear();
 }
 
 // ################################################################################################################################################################## //
 
-/* PJE : Used by createPJBuffer() and createDepthRenderTarget() */
+/* Searches for an memory type index of the choosen physical device that equals memoryTypeBits and the given flags*/
 uint32_t getMemoryTypeIndex(uint32_t memoryTypeBits, VkMemoryPropertyFlags flags) { 
 	VkPhysicalDeviceMemoryProperties memProps;
 	vkGetPhysicalDeviceMemoryProperties(pje::context.physicalDevices[pje::context.choosenPhysicalDevice], &memProps);
 
-	// Compares all GPU's valid memory types with given requirements (similiar to queue families)
+	// Compares all GPU's valid memory types with given requirements
 	for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
 		if ((memoryTypeBits & (1 << i)) && (memProps.memoryTypes[i].propertyFlags & flags) == flags) {
 			return i;
@@ -82,9 +82,9 @@ uint32_t getMemoryTypeIndex(uint32_t memoryTypeBits, VkMemoryPropertyFlags flags
 	throw runtime_error("Error at getMemoryTypeIndex");
 }
 
-/* PJE : Used by assignPJBufferToVRAM() - creates and binds VkBuffer and Memory of PJBuffer */
-void createPJBuffer(pje::PJBuffer& rawPJBuffer, VkDeviceSize size, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags) {
-	rawPJBuffer.flags = memoryFlags;
+/* Returns a VkBuffer Handle withpout VkMemory */
+VkBuffer createVkBuffer(VkDeviceSize size, VkBufferUsageFlags usageFlags, const char* debugName = nullptr) {
+	VkBuffer buffer = VK_NULL_HANDLE;
 	
 	VkBufferCreateInfo vkBufferInfo;
 	vkBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -96,44 +96,95 @@ void createPJBuffer(pje::PJBuffer& rawPJBuffer, VkDeviceSize size, VkBufferUsage
 	vkBufferInfo.queueFamilyIndexCount = 0;			// while VK_SHARING_MODE_EXCLUSIVE
 	vkBufferInfo.pQueueFamilyIndices = nullptr;		// while VK_SHARING_MODE_EXCLUSIVE
 
-	pje::context.result = vkCreateBuffer(pje::context.logicalDevice, &vkBufferInfo, nullptr, &rawPJBuffer.buffer);
+	pje::context.result = vkCreateBuffer(pje::context.logicalDevice, &vkBufferInfo, nullptr, &buffer);
 	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkCreateBuffer" << endl;
 		throw runtime_error("Error at vkCreateBuffer");
 	}
 
+#ifndef NDEBUG
+	if (debugName) {
+		/* buffer is a handle and will exist after completing this function */
+		pje::set_object_name(pje::context.logicalDevice, buffer, debugName);
+	}
+#endif
+
+	return buffer;
+}
+
+/* Creates VkMemory for a given VkBuffer */
+VkDeviceMemory allocateVkBufferMemory(VkBuffer buffer, VkMemoryPropertyFlags memoryFlags) {
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+
+	// Calculates the size the given VkBuffer requires
 	VkMemoryRequirements memReq;
-	vkGetBufferMemoryRequirements(pje::context.logicalDevice, rawPJBuffer.buffer, &memReq);
+	vkGetBufferMemoryRequirements(pje::context.logicalDevice, buffer, &memReq);
 
 	VkMemoryAllocateInfo memAllocInfo;
 	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	memAllocInfo.pNext = nullptr;
 	memAllocInfo.allocationSize = memReq.size;
-	memAllocInfo.memoryTypeIndex = getMemoryTypeIndex(memReq.memoryTypeBits, rawPJBuffer.flags);
+	memAllocInfo.memoryTypeIndex = getMemoryTypeIndex(memReq.memoryTypeBits, memoryFlags);
 
-	pje::context.result = vkAllocateMemory(pje::context.logicalDevice, &memAllocInfo, nullptr, &rawPJBuffer.deviceMemory);
+	pje::context.result = vkAllocateMemory(pje::context.logicalDevice, &memAllocInfo, nullptr, &memory);
 	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at vkAllocateMemory" << endl;
 		throw runtime_error("Error at vkAllocateMemory");
 	}
 
+	return memory;
+}
+
+/* Creates and binds VkBuffer and Memory of some pje::PJBuffer */
+void createPJBuffer(pje::PJBuffer& rawPJBuffer, VkDeviceSize size, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags, const char* debugName = nullptr) {
+	rawPJBuffer.buffer = createVkBuffer(size, usageFlags, debugName);
+	rawPJBuffer.size = size;
+	
+	rawPJBuffer.deviceMemory = allocateVkBufferMemory(rawPJBuffer.buffer, memoryFlags);
+	rawPJBuffer.flags = memoryFlags;
+
 	vkBindBufferMemory(pje::context.logicalDevice, rawPJBuffer.buffer, rawPJBuffer.deviceMemory, 0);
 }
 
-/* PJE : Used by assignPJBufferToVRAM() - Sends CommandBuffer for copy */
-void copyPJBufferToPJBuffer(pje::PJBuffer src, pje::PJBuffer dst, VkDeviceSize size) {
-	VkCommandBufferAllocateInfo commandBufferAllocateInfo;
-	commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	commandBufferAllocateInfo.pNext = nullptr;
-	commandBufferAllocateInfo.commandPool = pje::context.commandPool;
-	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	commandBufferAllocateInfo.commandBufferCount = 1;
+/* Maintains pje::stagingBuffer and writes void* data into local device VkBuffer dst */
+void copyToLocalDeviceBuffer(const void* data, VkDeviceSize dataSize, VkBuffer dst, VkDeviceSize dstOffset = 0) {
+	if (pje::stagingBuffer.buffer == VK_NULL_HANDLE || pje::stagingBuffer.size < dataSize) {
+		if (pje::stagingBuffer.buffer != VK_NULL_HANDLE) {
+			vkDestroyBuffer(pje::context.logicalDevice, pje::stagingBuffer.buffer, nullptr);
+			vkFreeMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory, nullptr);
+		}
 
-	VkCommandBuffer commandBuffer;
-	pje::context.result = vkAllocateCommandBuffers(pje::context.logicalDevice, &commandBufferAllocateInfo, &commandBuffer);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at copyPJBufferToPJBuffer::vkAllocateCommandBuffers" << endl;
-		throw runtime_error("Error at copyPJBufferToPJBuffer::vkAllocateCommandBuffers");
+		createPJBuffer(
+			pje::stagingBuffer,
+			dataSize,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			"stagingBuffer"
+		);
+	}
+
+	/* Mapping of void* data to pje::stagingBuffer */
+	void* stagingPointer;
+	// VK_WHOLE_SIZE => whole size is mappable
+	vkMapMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory, 0, VK_WHOLE_SIZE, 0, &stagingPointer);
+	memcpy(stagingPointer, data, dataSize);
+	// vkFlushMappedMemoryRange() || VK_MEMORY_PROPERTY_HOST_COHERENT_BIT == 1
+	vkUnmapMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory);
+
+	static VkCommandBuffer stagingCommandBuffer = VK_NULL_HANDLE;	// static variable will be created once for all executions of the given function
+
+	if (stagingCommandBuffer == VK_NULL_HANDLE) {
+		VkCommandBufferAllocateInfo commandBufferAllocateInfo;
+		commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		commandBufferAllocateInfo.pNext = nullptr;
+		commandBufferAllocateInfo.commandPool = pje::context.commandPool;
+		commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		commandBufferAllocateInfo.commandBufferCount = 1;
+
+		vkAllocateCommandBuffers(pje::context.logicalDevice, &commandBufferAllocateInfo, &stagingCommandBuffer);
+	}
+	else {
+		vkResetCommandBuffer(stagingCommandBuffer, 0);
 	}
 
 	VkCommandBufferBeginInfo commandBufferBeginInfo;
@@ -143,23 +194,15 @@ void copyPJBufferToPJBuffer(pje::PJBuffer src, pje::PJBuffer dst, VkDeviceSize s
 	commandBufferBeginInfo.pInheritanceInfo = nullptr;
 
 	/* START - RECORDING */
-	pje::context.result = vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at copyPJBufferToPJBuffer::vkBeginCommandBuffer" << endl;
-		throw runtime_error("Error at copyPJBufferToPJBuffer::vkBeginCommandBuffer");
-	}
+	vkBeginCommandBuffer(stagingCommandBuffer, &commandBufferBeginInfo);
 
 	VkBufferCopy bufferCopyRegion1;
 	bufferCopyRegion1.srcOffset = 0;
-	bufferCopyRegion1.dstOffset = 0;
-	bufferCopyRegion1.size = size;
-	vkCmdCopyBuffer(commandBuffer, src.buffer, dst.buffer, 1, &bufferCopyRegion1);
+	bufferCopyRegion1.dstOffset = dstOffset;
+	bufferCopyRegion1.size = dataSize;
+	vkCmdCopyBuffer(stagingCommandBuffer, pje::stagingBuffer.buffer, dst, 1, &bufferCopyRegion1);
 
-	pje::context.result = vkEndCommandBuffer(commandBuffer);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at copyPJBufferToPJBuffer::vkEndCommandBuffer" << endl;
-		throw runtime_error("Error at copyPJBufferToPJBuffer::vkEndCommandBuffer");
-	}
+	vkEndCommandBuffer(stagingCommandBuffer);
 	/* END - RECORDING */
 
 	VkSubmitInfo submitInfo;
@@ -169,70 +212,65 @@ void copyPJBufferToPJBuffer(pje::PJBuffer src, pje::PJBuffer dst, VkDeviceSize s
 	submitInfo.pWaitSemaphores = nullptr;
 	submitInfo.pWaitDstStageMask = nullptr;
 	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &commandBuffer;
+	submitInfo.pCommandBuffers = &stagingCommandBuffer;
 	submitInfo.signalSemaphoreCount = 0;
 	submitInfo.pSignalSemaphores = nullptr;
 
-	/* Submission of CommandBuffer onto VkQueue */
-	pje::context.result = vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, VK_NULL_HANDLE);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at copyPJBufferToPJBuffer::vkQueueSubmit" << endl;
-		throw runtime_error("Error at copyPJBufferToPJBuffer::vkQueueSubmit");
-	}
+	/* Submission of VkCommandBuffer onto VkQueue */
+	vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, pje::context.fenceCopiedBuffer);
 
-	vkQueueWaitIdle(pje::context.queueForPrototyping); // better solution : fences
-	vkFreeCommandBuffers(pje::context.logicalDevice, pje::context.commandPool, 1, &commandBuffer);
+	vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer, VK_TRUE, numeric_limits<uint64_t>::max());
+	vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer);
 }
 
-/* PJE : Sends data on RAM to [VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT]-VRAM  */
+/* Sends data on RAM as PJBuffer to [VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT]-VRAM */
 template <typename T>
-void assignPJBufferToVRAM(pje::PJBuffer& localDeviceBuffer, vector<T> objectTarget, VkBufferUsageFlags vertexOrIndexFlag) {
+void sendDataToVRAM(pje::PJBuffer& localDeviceBuffer, vector<T> objectTarget, VkBufferUsageFlags vertexOrIndexFlag, const char* debugName = nullptr) {
 	VkDeviceSize objectByteSize = sizeof(T) * objectTarget.size();
-
-	createPJBuffer(
-		pje::stagingBuffer,
-		objectByteSize,
-		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-	);
-
-	void* rawPointer;
-	vkMapMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory, 0, VK_WHOLE_SIZE, 0, &rawPointer);	// VK_WHOLE_SIZE == memReq.size
-	memcpy(rawPointer, objectTarget.data(), objectByteSize);
-	// vkFlushMappedMemoryRange() || VK_MEMORY_PROPERTY_HOST_COHERENT_BIT == 1
-	vkUnmapMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory);
 
 	createPJBuffer(
 		localDeviceBuffer,
 		objectByteSize,
 		VK_BUFFER_USAGE_TRANSFER_DST_BIT | vertexOrIndexFlag,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		debugName
 	);
 
 	// HOST_COHERENT buffer -> DEVICE_LOCAL buffer
-	copyPJBufferToPJBuffer(pje::stagingBuffer, localDeviceBuffer, objectByteSize);
-
-	vkDestroyBuffer(pje::context.logicalDevice, pje::stagingBuffer.buffer, nullptr);
-	vkFreeMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory, nullptr);
+	copyToLocalDeviceBuffer(objectTarget.data(), objectByteSize, localDeviceBuffer.buffer);
 }
 
 // ################################################################################################################################################################## //
 
-/* PJE : Used by setupRealtimeRendering() - during pipeline creation */
+/* Defines the Layout of VkDescriptorSet which declares needed data in each shader */
 void createDescriptorSetLayout(VkDescriptorSetLayout& rawLayout) {
-	VkDescriptorSetLayoutBinding layoutBinding;							// SLOT (or binding) of VkDescriptorSetLayout
-	layoutBinding.binding = 0;											// layout(binding = n)
-	layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	layoutBinding.descriptorCount = 1;									// in shader code behind one binding => array[descriptorCount]
-	layoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-	layoutBinding.pImmutableSamplers = nullptr;
+	// SLOT (or binding) of VkDescriptorSetLayout
+	array<VkDescriptorSetLayoutBinding, 3> layoutBindings;
+							
+	layoutBindings[0].binding = 0;																// layout(binding = n)
+	layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	layoutBindings[0].descriptorCount = 1;														// in shader code behind one binding => array[descriptorCount]
+	layoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+	layoutBindings[0].pImmutableSamplers = nullptr;
+
+	layoutBindings[1].binding = 1;
+	layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	layoutBindings[1].descriptorCount = 1;
+	layoutBindings[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	layoutBindings[1].pImmutableSamplers = nullptr;
+
+	layoutBindings[2].binding = 2;
+	layoutBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	layoutBindings[2].descriptorCount = 1;
+	layoutBindings[2].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	layoutBindings[2].pImmutableSamplers = nullptr;
 
 	VkDescriptorSetLayoutCreateInfo layoutCreateInfo;
 	layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	layoutCreateInfo.pNext = nullptr;
 	layoutCreateInfo.flags = 0;
-	layoutCreateInfo.bindingCount = 1;
-	layoutCreateInfo.pBindings = &layoutBinding;
+	layoutCreateInfo.bindingCount = layoutBindings.size();
+	layoutCreateInfo.pBindings = layoutBindings.data();
 
 	pje::context.result = vkCreateDescriptorSetLayout(pje::context.logicalDevice, &layoutCreateInfo, nullptr, &rawLayout);
 	if (pje::context.result != VK_SUCCESS) {
@@ -241,19 +279,20 @@ void createDescriptorSetLayout(VkDescriptorSetLayout& rawLayout) {
 	}
 }
 
-/* PJE : Used by setupRealtimeRendering() - sets will be allocated from pool */
+/* Creates a VkDescriptorPool whose VkDescritorSet-items have 1 uniform and 2 storage buffers */
 void createDescriptorPool(VkDescriptorPool& rawPool) {
-	VkDescriptorPoolSize poolSize;
-	poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	poolSize.descriptorCount = 1;						// number of descriptors to allocate for one binding => array[descriptorCount]
+	auto poolSizes = array{														// TODO (should be defined outside of function for a better abstraction)
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2}
+	};
 
 	VkDescriptorPoolCreateInfo poolCreateInfo;
 	poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	poolCreateInfo.pNext = nullptr;
 	poolCreateInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-	poolCreateInfo.maxSets = 1;							// allocatable descriptor sets
-	poolCreateInfo.poolSizeCount = 1;
-	poolCreateInfo.pPoolSizes = &poolSize;
+	poolCreateInfo.maxSets = 1;													// allocatable descriptor sets
+	poolCreateInfo.poolSizeCount = poolSizes.size();
+	poolCreateInfo.pPoolSizes = poolSizes.data();
 
 	pje::context.result = vkCreateDescriptorPool(pje::context.logicalDevice, &poolCreateInfo, nullptr, &rawPool);
 	if (pje::context.result != VK_SUCCESS) {
@@ -262,7 +301,7 @@ void createDescriptorPool(VkDescriptorPool& rawPool) {
 	}
 }
 
-/* PJE : Used by setupRealtimeRendering() - set allocation */
+/* Creates VkDescriptorSet from context.descriptorPool regarding context.descriptorSetLayout */
 void createDescriptorSet(VkDescriptorSet &rawDescriptorSet) {
 	VkDescriptorSetAllocateInfo allocateInfo;
 	allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -278,45 +317,47 @@ void createDescriptorSet(VkDescriptorSet &rawDescriptorSet) {
 	}
 }
 
-/* PJE : Used by setupRealtimeRendering() - after assigning uniform */
-void linkDescriptorSetWithBuffer(VkDescriptorSet& descriptorSet, pje::PJBuffer& uniformBuffer, VkDeviceSize sizeofUniformData) {
+/* Links uniform buffer or storage buffer to an existing VkDescriptorSet */
+void linkDescriptorSetToBuffer(VkDescriptorSet& descriptorSet, uint32_t dstBinding, VkDescriptorType type, pje::PJBuffer& buffer, VkDeviceSize sizeofData = VK_WHOLE_SIZE) {
 	/* Telling descriptorSet what it is suppose to contain */
 	VkDescriptorBufferInfo bufferInfo;
-	bufferInfo.buffer = uniformBuffer.buffer;			// buffer content on RAM
+	bufferInfo.buffer = buffer.buffer;							// buffer content on RAM
 	bufferInfo.offset = 0;
-	bufferInfo.range = sizeofUniformData;
+	bufferInfo.range = sizeofData;
 
 	/* Updating descriptors of descriptorSet */
 	VkWriteDescriptorSet update;
 	update.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	update.pNext = nullptr;
 	update.dstSet = descriptorSet;
-	update.dstBinding = 0;
+	update.dstBinding = dstBinding;
 	update.dstArrayElement = 0;									// first element		in array[descriptorCount]
 	update.descriptorCount = 1;									// amount of elements	in array[descriptorCount]
-	update.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	update.descriptorType = type;
 	update.pImageInfo = nullptr;
 	update.pBufferInfo = &bufferInfo;							// descriptor's buffer
 	update.pTexelBufferView = nullptr;
 
+	/* Descriptor/Pointer Update */
 	vkUpdateDescriptorSets(pje::context.logicalDevice, 1, &update, 0, nullptr);
 }
 
-/* PJE : Sends uniform on RAM to VRAM */
-void assignUniformToVRAM(pje::PJBuffer& uniformBuffer, VkDeviceSize sizeofUniformData) {
+/* Create uniform by creating PJBuffer */
+void createUniformBuffer(pje::PJBuffer& rawUniformBuffer, VkDeviceSize sizeofUniformData, const char* debugName = nullptr) {
 	// data may need some padding if data not always in vec4 (4x float) format
 	createPJBuffer(
-		uniformBuffer,
+		rawUniformBuffer,
 		sizeofUniformData,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		debugName
 	);
 }
 
 // ################################################################################################################################################################## //
 
-/* PJE : Used in setupRealtimeRendering() - one depth image for all images in swapchain */
-void createRenderTargets(VkExtent3D imageSize) {
+/* Sets render targets for pje's Depth and MSAA*/
+void createDepthAndMSAA(VkExtent3D imageSize) {
 	/* MSAA IMAGE */
 	VkImageCreateInfo msaaImageInfo;
 	msaaImageInfo.sType = VkStructureType::VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -341,6 +382,7 @@ void createRenderTargets(VkExtent3D imageSize) {
 	VkMemoryRequirements memReq;
 	VkMemoryAllocateInfo memAllocInfo;
 
+	/* Considers VK_SAMPLE_COUNT_4_BIT for memReq.size */
 	vkGetImageMemoryRequirements(pje::context.logicalDevice, *pje::context.msaaImage, &memReq);
 
 	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -444,7 +486,7 @@ void createRenderTargets(VkExtent3D imageSize) {
 
 // ################################################################################################################################################################## //
 
-/* PJE : cleanupRealtimeRendering should only destroy context's swapchain when the program will be closed */
+/* Cleanup of VkHandles on reset or on app termination */
 void pje::cleanupRealtimeRendering(bool reset) {
 	for (uint32_t i = 0; i < pje::context.numberOfImagesInSwapchain; i++) {
 		vkDestroyFramebuffer(pje::context.logicalDevice, pje::context.swapchainFramebuffers[i], nullptr);
@@ -463,6 +505,14 @@ void pje::cleanupRealtimeRendering(bool reset) {
 	if (!reset) {
 		vkDestroyDescriptorPool(pje::context.logicalDevice, pje::context.descriptorPool, nullptr);			// also does vkFreeDescriptorSets() automatically
 
+		vkFreeMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory, nullptr);
+		vkDestroyBuffer(pje::context.logicalDevice, pje::stagingBuffer.buffer, nullptr);
+
+		vkFreeMemory(pje::context.logicalDevice, pje::storeBoneRefs.deviceMemory, nullptr);
+		vkDestroyBuffer(pje::context.logicalDevice, pje::storeBoneRefs.buffer, nullptr);
+		vkFreeMemory(pje::context.logicalDevice, pje::storeBoneMatrices.deviceMemory, nullptr);
+		vkDestroyBuffer(pje::context.logicalDevice, pje::storeBoneMatrices.buffer, nullptr);
+
 		vkFreeMemory(pje::context.logicalDevice, pje::uniformsBuffer.deviceMemory, nullptr);
 		vkDestroyBuffer(pje::context.logicalDevice, pje::uniformsBuffer.buffer, nullptr);
 		vkFreeMemory(pje::context.logicalDevice, pje::indexBuffer.deviceMemory, nullptr);
@@ -480,7 +530,7 @@ void pje::cleanupRealtimeRendering(bool reset) {
 	}
 }
 
-/* PJE : Used in setupRealtimeRendering() - declares what meshes to render later */
+/* Recording of context.commandBuffers - Declares what has to be rendered later */
 void recordContextCommandBuffers(pje::PJMesh& renderable, uint32_t numberOfCommandBuffer) {
 	// Defines CommandBuffer behavior
 	VkCommandBufferBeginInfo commandBufferBeginInfo;
@@ -514,7 +564,7 @@ void recordContextCommandBuffers(pje::PJMesh& renderable, uint32_t numberOfComma
 	renderPassBeginInfo.clearValueCount = 3;
 	renderPassBeginInfo.pClearValues = clearValues.data();
 
-	/* RECORDING of CommandBuffers */
+	/* RECORDING of all context.commandBuffers */
 	for (uint32_t i = 0; i < numberOfCommandBuffer; i++) {
 		/* START RECORDING */
 		pje::context.result = vkBeginCommandBuffer(pje::context.commandBuffers[i], &commandBufferBeginInfo);
@@ -523,8 +573,8 @@ void recordContextCommandBuffers(pje::PJMesh& renderable, uint32_t numberOfComma
 			throw runtime_error("Error at vkBeginCommandBuffer");
 		}
 
-		renderPassBeginInfo.framebuffer = pje::context.swapchainFramebuffers[i];											// framebuffer that the current command buffer is associated with
-		vkCmdBeginRenderPass(pje::context.commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);	// connects CommandBuffer to Framebuffer ; CommandBuffer knows RenderPass
+		renderPassBeginInfo.framebuffer = pje::context.swapchainFramebuffers[i];									// framebuffer that the current command buffer is associated with
+		vkCmdBeginRenderPass(pje::context.commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);		// connects CommandBuffer to Framebuffer ; CommandBuffer knows RenderPass
 
 		// BIND => decide for an pipeline and use it for graphical calculation
 		vkCmdBindPipeline(pje::context.commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pje::context.pipeline);
@@ -537,8 +587,6 @@ void recordContextCommandBuffers(pje::PJMesh& renderable, uint32_t numberOfComma
 
 		// BIND => ordering to use certain buffer in VRAM
 		array<VkDeviceSize, 1> offsets{ 0 };
-		vkCmdBindVertexBuffers(pje::context.commandBuffers[i], 0, 1, &pje::vertexBuffer.buffer, offsets.data());
-		vkCmdBindIndexBuffer(pje::context.commandBuffers[i], pje::indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 		vkCmdBindDescriptorSets(
 			pje::context.commandBuffers[i],
 			VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -550,8 +598,15 @@ void recordContextCommandBuffers(pje::PJMesh& renderable, uint32_t numberOfComma
 			nullptr
 		);
 
+		// TODO ===> FOR LOOP - START
+
+		vkCmdBindVertexBuffers(pje::context.commandBuffers[i], 0, 1, &pje::vertexBuffer.buffer, offsets.data());
+		vkCmdBindIndexBuffer(pje::context.commandBuffers[i], pje::indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
 		// DRAW => drawing on swapchain images
 		vkCmdDrawIndexed(pje::context.commandBuffers[i], renderable.m_indices.size(), 1, 0, 0, 0);
+
+		// TODO ===> FOR LOOP - START
 
 		vkCmdEndRenderPass(pje::context.commandBuffers[i]);
 
@@ -564,7 +619,7 @@ void recordContextCommandBuffers(pje::PJMesh& renderable, uint32_t numberOfComma
 	}
 }
 
-/* PJE : Used in startVulkan() and resetRealtimeRendering() - creates Pipeline and CommandBufferPool*/
+/* Setup for Swapchain, Renderpass, Pipeline and CommandBufferPool */
 void setupRealtimeRendering(bool reset = false) {
 	/* swapchainInfo for building a Swapchain */
 	VkSwapchainCreateInfoKHR swapchainInfo;
@@ -638,16 +693,15 @@ void setupRealtimeRendering(bool reset = false) {
 		}
 	}
 
-	/* Render Target : Depth Image */
-	createRenderTargets(VkExtent3D{ pje::context.windowWidth, pje::context.windowHeight, 1 });
+	createDepthAndMSAA(VkExtent3D{ pje::context.windowWidth, pje::context.windowHeight, 1 });
 
 	/* VkCommandPool holds CommandBuffer which are necessary to tell Vulkan what to do */
 	if (!reset) {
 		VkCommandPoolCreateInfo commandPoolInfo;
 		commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 		commandPoolInfo.pNext = nullptr;
-		commandPoolInfo.flags = 0;												// reset record of single frame buffer | set to buffer to 'transient' for optimisation
-		commandPoolInfo.queueFamilyIndex = pje::context.choosenQueueFamily;		// must be the same as in VkDeviceQueueCreateInfo of the logical device & Queue Family 'VK_QUEUE_GRAPHICS_BIT' must be 1
+		commandPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;	// reset record of single frame buffer | set to buffer to 'transient' for optimisation
+		commandPoolInfo.queueFamilyIndex = pje::context.choosenQueueFamily;			// must be the same as in VkDeviceQueueCreateInfo of the logical device & Queue Family 'VK_QUEUE_GRAPHICS_BIT' must be 1
 
 		pje::context.result = vkCreateCommandPool(pje::context.logicalDevice, &commandPoolInfo, nullptr, &pje::context.commandPool);
 		if (pje::context.result != VK_SUCCESS) {
@@ -655,9 +709,118 @@ void setupRealtimeRendering(bool reset = false) {
 			throw runtime_error("Error at vkCreateCommandPool");
 		}
 	}
-
-	/* PIPELINE BUILDING - START */
 	if (!reset) {
+		/* RENDERPASS - START */
+
+		VkAttachmentDescription attachmentDescriptionMSAA;
+		attachmentDescriptionMSAA.flags = 0;
+		attachmentDescriptionMSAA.format = pje::context.outputFormat;
+		attachmentDescriptionMSAA.samples = pje::context.msaaFactor;
+		attachmentDescriptionMSAA.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		attachmentDescriptionMSAA.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		attachmentDescriptionMSAA.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		attachmentDescriptionMSAA.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		attachmentDescriptionMSAA.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		attachmentDescriptionMSAA.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+		VkAttachmentDescription attachmentDescriptionDepth;
+		attachmentDescriptionDepth.flags = 0;
+		attachmentDescriptionDepth.format = pje::context.depthFormat;
+		attachmentDescriptionDepth.samples = pje::context.msaaFactor;
+		attachmentDescriptionDepth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		attachmentDescriptionDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		attachmentDescriptionDepth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		attachmentDescriptionDepth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		attachmentDescriptionDepth.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		attachmentDescriptionDepth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+		// VkAttachmentDescription is held by renderPass for its subpasses (VkAttachmentReference.attachment uses VkAttachmentDescription)
+		VkAttachmentDescription attachmentDescriptionResolve;
+		attachmentDescriptionResolve.flags = 0;
+		attachmentDescriptionResolve.format = pje::context.outputFormat;					// has the same format as the swapchainInfo.imageFormat
+		attachmentDescriptionResolve.samples = VK_SAMPLE_COUNT_1_BIT;						// FlagBit => multisampling n_BIT
+		attachmentDescriptionResolve.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;					// what happens with the buffer after loading data
+		attachmentDescriptionResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;				// what happens with the buffer after storing data
+		attachmentDescriptionResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;		// for stencilBuffer (discarding certain pixels)
+		attachmentDescriptionResolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;		// for stencilBuffer (discarding certain pixels)
+		attachmentDescriptionResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;				// buffer as input
+		attachmentDescriptionResolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;			// buffer as output
+
+		VkAttachmentReference attachmentRefMSAA;
+		attachmentRefMSAA.attachment = 0;
+		attachmentRefMSAA.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+		VkAttachmentReference attachmentRefDepth;
+		attachmentRefDepth.attachment = 1;
+		attachmentRefDepth.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+		VkAttachmentReference attachmentRefResolve;
+		attachmentRefResolve.attachment = 2;										// index of attachment description
+		attachmentRefResolve.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;		// CONVERTING: desc.initialLayout -> ref.layout -> desc.finalLayout
+
+		// each render pass holds 1+ sub render passes | equals one run through pipeline
+		VkSubpassDescription subpassDescription;
+		subpassDescription.flags = 0;
+		subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;	// what kind of computation will be done
+		subpassDescription.inputAttachmentCount = 0;
+		subpassDescription.pInputAttachments = nullptr;							// actual vertices that being used for shader computation
+		subpassDescription.colorAttachmentCount = 1;
+		subpassDescription.pColorAttachments = &attachmentRefMSAA;				// which VkAttachmentDescription (attribute bundle) of Renderpass will be used
+		subpassDescription.pResolveAttachments = &attachmentRefResolve;			// -||-
+		subpassDescription.pDepthStencilAttachment = &attachmentRefDepth;		// -||-
+		subpassDescription.preserveAttachmentCount = 0;
+		subpassDescription.pPreserveAttachments = nullptr;
+
+		// VkSubpassDependency can be seen as a semaphore between subpasses for their micro tasks
+		VkSubpassDependency subpassDependency;
+		subpassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;									// waiting for the next finishing subpass
+		subpassDependency.dstSubpass = 0;
+		subpassDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;		// src scope has to finish that state ..
+		subpassDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;		// .. before dst is allowed to start this state
+		subpassDependency.srcAccessMask = VK_ACCESS_NONE;
+		subpassDependency.dstAccessMask = VK_ACCESS_NONE;
+		subpassDependency.dependencyFlags = 0;
+
+		VkSubpassDependency subpassDependencyDepth;
+		subpassDependencyDepth.srcSubpass = VK_SUBPASS_EXTERNAL;							// doesn't render on rendertarget before finishing previous subpass
+		subpassDependencyDepth.dstSubpass = 0;
+		subpassDependencyDepth.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+		subpassDependencyDepth.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+		subpassDependencyDepth.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		subpassDependencyDepth.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+		subpassDependencyDepth.dependencyFlags = 0;
+
+		array<VkAttachmentDescription, 3> attachmentDescriptions = {
+			attachmentDescriptionMSAA, attachmentDescriptionDepth, attachmentDescriptionResolve
+		};
+
+		array<VkSubpassDependency, 2> subpassDependencies = {
+			subpassDependency, subpassDependencyDepth
+		};
+
+		/* renderPass represents a single execution of the rendering pipeline */
+		VkRenderPassCreateInfo renderPassInfo;
+		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+		renderPassInfo.pNext = nullptr;
+		renderPassInfo.flags = 0;
+		renderPassInfo.attachmentCount = 3;
+		renderPassInfo.pAttachments = attachmentDescriptions.data();			// for subpassDescription's VkAttachmentReference(s)
+		renderPassInfo.subpassCount = 1;
+		renderPassInfo.pSubpasses = &subpassDescription;						// all subpasses of the current render pass
+		renderPassInfo.dependencyCount = 2;
+		renderPassInfo.pDependencies = subpassDependencies.data();
+
+		/* Creating RenderPass for VkGraphicsPipelineCreateInfo */
+		pje::context.result = vkCreateRenderPass(pje::context.logicalDevice, &renderPassInfo, nullptr, &pje::context.renderPass);
+		if (pje::context.result != VK_SUCCESS) {
+			cout << "Error at vkCreateRenderPass" << endl;
+			throw runtime_error("Error at vkCreateRenderPass");
+		}
+
+		/* RENDERPASS - END */
+
+		/* PIPELINE BUILDING - START */
+
 		/* Viewport */
 		VkViewport initViewport;
 		initViewport.x = 0.0f;							// upper left corner
@@ -710,7 +873,7 @@ void setupRealtimeRendering(bool reset = false) {
 		rasterizationInfo.depthClampEnable = VK_FALSE;
 		rasterizationInfo.rasterizerDiscardEnable = VK_FALSE;						// if true primitives won't be rendered but they may be used for other calculations
 		rasterizationInfo.polygonMode = VK_POLYGON_MODE_FILL;
-		rasterizationInfo.cullMode = VkCullModeFlagBits::VK_CULL_MODE_BACK_BIT;		// backface culling
+		rasterizationInfo.cullMode = VkCullModeFlagBits::VK_CULL_MODE_NONE;			// backface culling
 		rasterizationInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 		rasterizationInfo.depthBiasEnable = VK_FALSE;
 		rasterizationInfo.depthBiasConstantFactor = 0.0f;
@@ -776,117 +939,6 @@ void setupRealtimeRendering(bool reset = false) {
 		multisampleInfo.alphaToCoverageEnable = VK_FALSE;
 		multisampleInfo.alphaToOneEnable = VK_FALSE;
 
-		/* ATTACHMENTs and SUBPASSEs - START */
-
-		VkAttachmentDescription attachmentDescriptionMSAA;
-		attachmentDescriptionMSAA.flags = 0;
-		attachmentDescriptionMSAA.format = pje::context.outputFormat;
-		attachmentDescriptionMSAA.samples = pje::context.msaaFactor;
-		attachmentDescriptionMSAA.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		attachmentDescriptionMSAA.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		attachmentDescriptionMSAA.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		attachmentDescriptionMSAA.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		attachmentDescriptionMSAA.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		attachmentDescriptionMSAA.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-		VkAttachmentDescription attachmentDescriptionDepth;
-		attachmentDescriptionDepth.flags = 0;
-		attachmentDescriptionDepth.format = pje::context.depthFormat;
-		attachmentDescriptionDepth.samples = pje::context.msaaFactor;
-		attachmentDescriptionDepth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		attachmentDescriptionDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		attachmentDescriptionDepth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		attachmentDescriptionDepth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		attachmentDescriptionDepth.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		attachmentDescriptionDepth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-		// VkAttachmentDescription is held by renderPass for its subpasses (VkAttachmentReference.attachment uses VkAttachmentDescription)
-		VkAttachmentDescription attachmentDescriptionResolve;
-		attachmentDescriptionResolve.flags = 0;
-		attachmentDescriptionResolve.format = pje::context.outputFormat;					// has the same format as the swapchainInfo.imageFormat
-		attachmentDescriptionResolve.samples = VK_SAMPLE_COUNT_1_BIT;						// FlagBit => multisampling n_BIT
-		attachmentDescriptionResolve.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;					// what happens with the buffer after loading data
-		attachmentDescriptionResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;				// what happens with the buffer after storing data
-		attachmentDescriptionResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;		// for stencilBuffer (discarding certain pixels)
-		attachmentDescriptionResolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;		// for stencilBuffer (discarding certain pixels)
-		attachmentDescriptionResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;				// buffer as input
-		attachmentDescriptionResolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;			// buffer as output
-
-		VkAttachmentReference attachmentRefMSAA;
-		attachmentRefMSAA.attachment = 0;
-		attachmentRefMSAA.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-		VkAttachmentReference attachmentRefDepth;
-		attachmentRefDepth.attachment = 1;
-		attachmentRefDepth.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-		VkAttachmentReference attachmentRefResolve;
-		attachmentRefResolve.attachment = 2;										// index of attachment description
-		attachmentRefResolve.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;		// CONVERTING: desc.initialLayout -> ref.layout -> desc.finalLayout
-
-		// each render pass holds 1+ sub render passes | equals one run through pipeline
-		VkSubpassDescription subpassDescription;
-		subpassDescription.flags = 0;
-		subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;	// what kind of computation will be done
-		subpassDescription.inputAttachmentCount = 0;
-		subpassDescription.pInputAttachments = nullptr;							// actual vertices that being used for shader computation
-		subpassDescription.colorAttachmentCount = 1;
-		subpassDescription.pColorAttachments = &attachmentRefMSAA;				// which VkAttachmentDescription (attribute bundle) of Renderpass will be used
-		subpassDescription.pResolveAttachments = &attachmentRefResolve;			// -||-
-		subpassDescription.pDepthStencilAttachment = &attachmentRefDepth;		// -||-
-		subpassDescription.preserveAttachmentCount = 0;
-		subpassDescription.pPreserveAttachments = nullptr;
-
-		VkSubpassDependency subpassDependency;
-		subpassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;									// waiting for the next finishing subpass
-		subpassDependency.dstSubpass = 0;
-		subpassDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;		// src scope has to finish that state ..
-		subpassDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;		// .. before dst is allowed to start this state
-		subpassDependency.srcAccessMask = VK_ACCESS_NONE;									// TODO (change when multisampling is enabled)
-		subpassDependency.dstAccessMask = VK_ACCESS_NONE;									// -||-
-		subpassDependency.dependencyFlags = 0;
-
-		VkSubpassDependency subpassDependencyDepth;
-		subpassDependencyDepth.srcSubpass = VK_SUBPASS_EXTERNAL;							// doesn't render on rendertarget before finishing previous subpass
-		subpassDependencyDepth.dstSubpass = 0;
-		subpassDependencyDepth.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-		subpassDependencyDepth.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-		subpassDependencyDepth.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-		subpassDependencyDepth.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-		subpassDependencyDepth.dependencyFlags = 0;
-
-		/* ATTACHMENTs and SUBPASSEs - END */
-		/* RENDERPASS - START */
-
-		array<VkAttachmentDescription, 3> attachmentDescriptions = {
-			attachmentDescriptionMSAA, attachmentDescriptionDepth, attachmentDescriptionResolve
-		};
-
-		array<VkSubpassDependency, 2> subpassDependencies = {
-			subpassDependency, subpassDependencyDepth
-		};
-
-		/* renderPass represents a single execution of the rendering pipeline */
-		VkRenderPassCreateInfo renderPassInfo;
-		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-		renderPassInfo.pNext = nullptr;
-		renderPassInfo.flags = 0;
-		renderPassInfo.attachmentCount = 3;
-		renderPassInfo.pAttachments = attachmentDescriptions.data();			// for subpassDescription's VkAttachmentReference(s)
-		renderPassInfo.subpassCount = 1;
-		renderPassInfo.pSubpasses = &subpassDescription;						// all subpasses of the current render pass
-		renderPassInfo.dependencyCount = 2;
-		renderPassInfo.pDependencies = subpassDependencies.data();
-
-		/* Creating RenderPass for VkGraphicsPipelineCreateInfo */
-		pje::context.result = vkCreateRenderPass(pje::context.logicalDevice, &renderPassInfo, nullptr, &pje::context.renderPass);
-		if (pje::context.result != VK_SUCCESS) {
-			cout << "Error at vkCreateRenderPass" << endl;
-			throw runtime_error("Error at vkCreateRenderPass");
-		}
-
-		/* RENDERPASS - END */
-
 		VkPipelineDepthStencilStateCreateInfo depthStencilStateInfo = {};
 		depthStencilStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
 		depthStencilStateInfo.pNext = nullptr;
@@ -926,7 +978,7 @@ void setupRealtimeRendering(bool reset = false) {
 		pipelineInfo.pColorBlendState = &colorBlendInfo;
 		pipelineInfo.pDynamicState = &dynamicStateInfo;					// parts being changeable without building new pipeline
 		pipelineInfo.layout = pje::context.pipelineLayout;
-		pipelineInfo.renderPass = pje::context.renderPass;				// hold subpasses and subpass attachments
+		pipelineInfo.renderPass = pje::context.renderPass;				// holds n subpasses and subpass attachments
 		pipelineInfo.subpass = 0;										// index of .subpass
 		pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;				// deriving from other pipeline to reduce loading time
 		pipelineInfo.basePipelineIndex = -1;							// good coding style => invalid index
@@ -940,14 +992,27 @@ void setupRealtimeRendering(bool reset = false) {
 	}
 	/* PIPELINE BUILDING - END */
 
-	/* uniforms for shaders in pipeline */
+	if (!reset) {
+		/* Allocation of VkBuffer to transfer CPU vertices onto GPU */
+		sendDataToVRAM(pje::vertexBuffer, pje::loadedModels[0].meshes[0].m_vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "vertexBuffer");
+		sendDataToVRAM(pje::indexBuffer, pje::loadedModels[0].meshes[0].m_indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, "indexBuffer");
+		
+		/* TEMPORARY */
+		createPJBuffer(pje::storeBoneRefs, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "storeBoneRefs");
+		createPJBuffer(pje::storeBoneMatrices, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "storeBoneMatrices");
+	}
+
+	/* uniforms/storage buffer for shaders in pipeline */
 	if (!reset) {
 		/* Allocation of COHERENT VkBuffer to transfer uniforms onto GPU */
-		assignUniformToVRAM(pje::uniformsBuffer, sizeof(pje::Uniforms));
+		createUniformBuffer(pje::uniformsBuffer, sizeof(pje::Uniforms), "uniformsBuffer");
 		/* Allocation of VkDescriptorPool und VkDescriptorSet to update uniforms */
 		createDescriptorPool(pje::context.descriptorPool);
 		createDescriptorSet(pje::context.descriptorSet);
-		linkDescriptorSetWithBuffer(pje::context.descriptorSet, pje::uniformsBuffer, sizeof(pje::Uniforms));
+		/* Allocation of Uniforms and Storage Buffers to DescriptorSet*/
+		linkDescriptorSetToBuffer(pje::context.descriptorSet, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, pje::uniformsBuffer);
+		linkDescriptorSetToBuffer(pje::context.descriptorSet, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, pje::storeBoneRefs);
+		linkDescriptorSetToBuffer(pje::context.descriptorSet, 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, pje::storeBoneMatrices);
 	}
 
 	/* Framebuffer => bridge buffer between CommandBuffer and Rendertargets/Image Views (Vulkan communication buffer) */
@@ -969,6 +1034,7 @@ void setupRealtimeRendering(bool reset = false) {
 			pje::context.swapchainImageViews[i]
 		};
 
+		// VkAttachmentDescription of VkRenderPass describes rendertargets
 		framebufferInfo.pAttachments = rendertargets.data();	// imageView => reference to image in swapchain
 
 		pje::context.result = vkCreateFramebuffer(pje::context.logicalDevice, &framebufferInfo, nullptr, &pje::context.swapchainFramebuffers[i]);
@@ -992,18 +1058,12 @@ void setupRealtimeRendering(bool reset = false) {
 		cout << "Error at setupRealtimeRendering::vkAllocateCommandBuffers" << endl;
 		throw runtime_error("Error at setupRealtimeRendering::vkAllocateCommandBuffers");
 	}
-
-	if (!reset) {
-		/* Allocation of VkBuffer to transfer CPU vertices onto GPU */
-		assignPJBufferToVRAM(pje::vertexBuffer, pje::debugMeshes[1].m_vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-		assignPJBufferToVRAM(pje::indexBuffer, pje::debugMeshes[1].m_indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-	}
 	
 	/* Record CommandBuffers designated to rendering */
-	recordContextCommandBuffers(pje::debugMeshes[1], pje::context.numberOfImagesInSwapchain);
+	recordContextCommandBuffers(pje::loadedModels[0].meshes[0], pje::context.numberOfImagesInSwapchain);
 }
 
-/* GLFW: Callback for GLFWwindowsizefun */
+/* Callback for glfwSetWindowSizeCallback */
 void resetRealtimeRendering(GLFWwindow* window, int width, int height) {
 	if (width <= 0 || height <= 0) {
 		pje::context.isWindowMinimized = true;
@@ -1037,7 +1097,13 @@ void resetRealtimeRendering(GLFWwindow* window, int width, int height) {
 
 // ################################################################################################################################################################## //
 
-/* GLFW : Creates a window | Sets callback functions */
+/* Sets callback functions */
+void setGlfwCallbacks() {
+	/* Sets callback function on resize */
+	glfwSetWindowSizeCallback(pje::context.window, resetRealtimeRendering);
+}
+
+/* Creates a window |  */
 int pje::startGlfw3(const char* windowName) {
 	glfwInit();
 
@@ -1057,13 +1123,12 @@ int pje::startGlfw3(const char* windowName) {
 		return -1;
 	}
 
-	/* Sets callback function on resize */
-	glfwSetWindowSizeCallback(pje::context.window, resetRealtimeRendering);
+	setGlfwCallbacks();
 
 	return 0;
 }
 
-/* GLFW : Closes created window */
+/* Closes created window */
 void pje::stopGlfw3() {
 	glfwDestroyWindow(pje::context.window);
 	glfwTerminate();
@@ -1073,7 +1138,7 @@ void pje::stopGlfw3() {
 
 // ################################################################################################################################################################## //
 
-/* Vulkan : sets pje::context.choosenPhysicalDevice based on needed attributes */
+/* Sets pje::context.choosenPhysicalDevice based on needed attributes */
 void selectGPU(const vector<VkPhysicalDevice> physicalDevices, VkPhysicalDeviceType preferredType, const vector<VkQueueFlagBits> neededFamilyQueueAttributes, uint32_t neededSurfaceImages, VkFormat imageColorFormat, VkPresentModeKHR neededPresentationMode) {
 	if (physicalDevices.size() == 0)
 		throw runtime_error("[ERROR] No GPU was found on this computer.");
@@ -1214,7 +1279,7 @@ void selectGPU(const vector<VkPhysicalDevice> physicalDevices, VkPhysicalDeviceT
 	throw runtime_error("[ERROR] No suitable GPU was found for PJEngine.");
 }
 
-/* Vulkan : pje::context setup */
+/* Setup of pje::context */
 int pje::startVulkan() {
 	/* appInfo used for instanceInfo */
 	VkApplicationInfo appInfo;
@@ -1432,7 +1497,7 @@ int pje::startVulkan() {
 		return pje::context.result;
 	}
 
-	/* Getting Queue of some logical device to assign tasks (CommandBuffer) later */
+	/* Getting Queue of some logical device to assign commandBuffer later */
 	vkGetDeviceQueue(pje::context.logicalDevice, pje::context.choosenQueueFamily, 0, &pje::context.queueForPrototyping);
 
 	/* ############## LOADING SHADERS ############## */
@@ -1455,9 +1520,17 @@ int pje::startVulkan() {
 	/* Wraping Shader Modules in a distinct CreateInfo for the Shaderpipeline and adding them to engine's stageInfos */
 	pje::addShaderModuleToShaderStages(pje::context.shaderModuleBasicVert, VK_SHADER_STAGE_VERTEX_BIT);
 	pje::addShaderModuleToShaderStages(pje::context.shaderModuleBasicFrag, VK_SHADER_STAGE_FRAGMENT_BIT);
-	cout << "[DEBUG] Programable Pipeline Stages in pje::shaderStageInfos: " << pje::context.shaderStageInfos.size() << endl;
+	cout << "[DEBUG] Programmable Pipeline Stages\n"
+		"\tpje::shaderStageInfos: " << pje::context.shaderStageInfos.size() << endl;
 
 	/* ############## SETUP FOR REAL TIME RENDERING ############## */
+
+	/* Creates unsignaled fence for pje::stagingBuffer */
+	VkFenceCreateInfo fenceInfo;
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceInfo.pNext = nullptr;
+	fenceInfo.flags = 0;
+	vkCreateFence(pje::context.logicalDevice, &fenceInfo, nullptr, &pje::context.fenceCopiedBuffer);
 
 	setupRealtimeRendering();
 
@@ -1479,8 +1552,7 @@ int pje::startVulkan() {
 		return pje::context.result;
 	}
 
-	/* Creates signaled fence */
-	VkFenceCreateInfo fenceInfo;
+	/* Creates signaled fence for image rendering */
 	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceInfo.pNext = nullptr;
 	fenceInfo.flags = VkFenceCreateFlagBits::VK_FENCE_CREATE_SIGNALED_BIT;
@@ -1493,23 +1565,20 @@ int pje::startVulkan() {
 
 	/* DEBUG for debugUtils */
 #ifndef NDEBUG
-	pje::context.result = pje::set_object_name(pje::context.logicalDevice, pje::context.fenceRenderFinished, "fenceRenderFinished");
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at pje::set_object" << endl;
-		return pje::context.result;
-	}
+	setObjectNames(pje::context);
 #endif
 
 	return 0;
 }
 
-/* Vulkan : pje::context cleanup */
+/* Cleanup of pje::context */
 void pje::stopVulkan() {
 	/* Waiting for Vulkan API to finish all its tasks */
 	vkDeviceWaitIdle(pje::context.logicalDevice);
 
 	/* vkDestroy bottom-up */
 	vkDestroyFence(pje::context.logicalDevice, pje::context.fenceRenderFinished, nullptr);
+	vkDestroyFence(pje::context.logicalDevice, pje::context.fenceCopiedBuffer, nullptr);
 	vkDestroySemaphore(pje::context.logicalDevice, pje::context.semaphoreSwapchainImageReceived, nullptr);
 	vkDestroySemaphore(pje::context.logicalDevice, pje::context.semaphoreRenderingFinished, nullptr);
 
@@ -1529,14 +1598,54 @@ void pje::stopVulkan() {
 
 // ################################################################################################################################################################## //
 
-/* PJE : Used in loopVisualizationOf() */
-/* 
- * drawFrameOnSurface has 3 steps => using semaphores
+/* Updates a [VK_MEMORY_PROPERTY_HOST_COHERENT_BIT]-VkBuffer */
+void updateUniformsBuffer(VkDeviceMemory& deviceMemory) {
+	/* Updating VkBuffer (uniform) on VRAM */
+	void* rawPointer;
+	vkMapMemory(pje::context.logicalDevice, deviceMemory, 0, VK_WHOLE_SIZE, 0, &rawPointer);
+	memcpy(rawPointer, &pje::uniforms, sizeof(pje::uniforms));
+	vkUnmapMemory(pje::context.logicalDevice, pje::uniformsBuffer.deviceMemory);
+}
+
+/* Modifying matrices in relation to passed time since app start */
+void updateMatrices() {
+	auto frameTimePoint = std::chrono::steady_clock::now();
+	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(frameTimePoint - pje::context.startTimePoint).count() / 1000.0f;
+
+	pje::uniforms.modelMatrix = glm::rotate(
+		glm::mat4(1.0f),						// identity matrix
+		duration * glm::radians(20.0f),
+		glm::vec3(0.0f, -1.0f, 0.0f)
+	);
+
+	pje::uniforms.viewMatrix = glm::lookAt(		// inverse modelMatrix_cam
+		glm::vec3(4.0f, 2.0f, 4.0f),			// eye in world space (usally world moves around camera and NOT the other way around)
+		glm::vec3(0.0f, 0.0f, 0.0f),
+		glm::vec3(0.0f, 1.0f, 0.0f)
+	);
+
+	pje::uniforms.projectionMatrix = glm::perspective(
+		glm::radians(60.0f),
+		pje::context.windowWidth / (float)pje::context.windowHeight,
+		0.1f,
+		10.0f
+	);
+
+	/* Vulkan y axis goes down | OpenGL y axis goes up */
+	pje::uniforms.projectionMatrix[1][1] *= -1;
+
+	pje::uniforms.mvp = pje::uniforms.projectionMatrix * pje::uniforms.viewMatrix * pje::uniforms.modelMatrix;
+
+	updateUniformsBuffer(pje::uniformsBuffer.deviceMemory);
+}
+
+/* Creates render calls via CommandBuffer handled by VkFence and VkSemaphore */
+/* drawFrameOnSurface has 3 steps
  * 1) get an image from swapchain
  * 2) render inside of selected image
  * 3) give back image to swapchain to present it
  * 
- *    Fences => CPU semaphore | VkSemaphores => GPU semaphore
+ *    VkFence => CPU semaphore | VkSemaphores => GPU semaphore
  */
 void drawFrameOnSurface() {
 	if (!pje::context.isWindowMinimized) {
@@ -1565,7 +1674,7 @@ void drawFrameOnSurface() {
 		}
 
 		uint32_t imageIndex;
-		pje::context.result = vkAcquireNextImageKHR(
+		pje::context.result = vkAcquireNextImageKHR(		// async => GPU can already compute without having a rendertarget
 			pje::context.logicalDevice,
 			pje::context.swapchain,
 			numeric_limits<uint64_t>::max(),				// timeout in ns before abort
@@ -1586,11 +1695,11 @@ void drawFrameOnSurface() {
 		submitInfo.pNext = nullptr;
 		submitInfo.waitSemaphoreCount = 1;
 		submitInfo.pWaitSemaphores = &pje::context.semaphoreSwapchainImageReceived;
-		submitInfo.pWaitDstStageMask = waitStageMask.data();
+		submitInfo.pWaitDstStageMask = waitStageMask.data();						// wait at this point in the pipeline until pWaitSemaphore is signaled
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &pje::context.commandBuffers[imageIndex];
 		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = &pje::context.semaphoreRenderingFinished;	// which semaphores will be triggered
+		submitInfo.pSignalSemaphores = &pje::context.semaphoreRenderingFinished;	// which semaphore will be triggered when submit step done
 
 		/* Submitting CommandBuffer to queue => ACTUAL RENDERING */
 		/* Fence must be unsignaled to proceed and signals fence */
@@ -1624,48 +1733,7 @@ void drawFrameOnSurface() {
 	}
 }
 
-/* PJE : uploads uniform data */
-void updateUniformsBuffer() {
-	/* Updating VkBuffer (uniform) on VRAM */
-	void* rawPointer;
-	vkMapMemory(pje::context.logicalDevice, pje::uniformsBuffer.deviceMemory, 0, VK_WHOLE_SIZE, 0, &rawPointer);
-	memcpy(rawPointer, &pje::uniforms, sizeof(pje::uniforms));
-	vkUnmapMemory(pje::context.logicalDevice, pje::uniformsBuffer.deviceMemory);
-}
-
-/* PJE : Modifying modelMatrix in relation to passed time since app start */
-void updateMVP() {
-	auto frameTimePoint = std::chrono::steady_clock::now();
-	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(frameTimePoint - pje::context.startTimePoint).count() / 1000.0f;
-
-	pje::uniforms.modelMatrix = glm::rotate(
-		glm::mat4(1.0f),					// identity matrix
-		duration * glm::radians(20.0f),
-		glm::vec3(0.0f, -1.0f, 0.0f)
-	);
-
-	pje::uniforms.viewMatrix = glm::lookAt(		// inverse modelMatrix_cam
-		glm::vec3(4.0f, 2.0f, 4.0f),		// eye in world space (usally world moves around camera and NOT the other way around)
-		glm::vec3(0.0f, 0.0f, 0.0f), 
-		glm::vec3(0.0f, 1.0f, 0.0f)
-	);
-
-	pje::uniforms.projectionMatrix = glm::perspective(
-		glm::radians(60.0f),
-		pje::context.windowWidth / (float)pje::context.windowHeight,
-		0.1f,
-		10.0f
-	);
-
-	/* Vulkan y axis goes down | OpenGL y axis goes up */
-	pje::uniforms.projectionMatrix[1][1] *= -1;
-
-	pje::uniforms.mvp = pje::uniforms.projectionMatrix * pje::uniforms.viewMatrix * pje::uniforms.modelMatrix;
-
-	updateUniformsBuffer();
-}
-
-/* PJE : Called for each frame */
+/* Renders a new frame */
 /* Loop :
 *  1) Acquire next swapchain image related to some logical device
 *  2) Submit CommandBuffer designated for image of swapchain to VkQueue => Rendering
@@ -1674,7 +1742,13 @@ void updateMVP() {
 void pje::loopVisualizationOf(GLFWwindow* window) {
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
-		updateMVP();
+		updateMatrices();
 		drawFrameOnSurface();
 	}
+}
+
+// ################################################################################################################################################################## //
+/* ######################## DEBUG FUNCTIONS ######################## */
+void setObjectNames(const pje::Context& context) {
+	pje::set_object_name(context.logicalDevice, context.fenceRenderFinished, "fenceRenderFinished");
 }

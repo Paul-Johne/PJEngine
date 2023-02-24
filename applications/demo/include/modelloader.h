@@ -9,23 +9,27 @@
 	#include <globalParams.h>
 
 namespace pje {
-	
+
 	/* #### ModelLoader - Holds all loaded objects with their respective path for PJEngine #### */
 	class ModelLoader {
 	public:
-		std::vector<PJMesh>	m_models;
-		std::vector<std::string> m_modelPaths;
-		int	m_active_models;
-		bool m_centerModel;
+		std::vector<PJModel>		m_models;
+		std::vector<std::string>	m_modelPaths;
+		int							m_activeModels;
+		bool						m_centerModel;
 
 		ModelLoader();
 		~ModelLoader();
-		void loadModel(const std::string& filename, bool centerModel = false);
+		pje::PJModel loadModel(const std::string& filename, unsigned int pFlags, bool centerModel = false);
 
 	private:
-		std::filesystem::path m_folderForModels;
+		std::filesystem::path		m_folderForModels;
+		std::vector<PJMesh>			m_temp_meshesOfModel;
+		uint32_t					m_offsetsCurrentPJModel;
 
 		void recurseNodes(aiNode* node, const aiScene* pScene, bool centerModel);
-		PJMesh translateMesh(aiMesh* mesh, const aiScene* pScene, bool centerModel);
+		PJMesh convertMesh(aiMesh* mesh, const aiScene* pScene, bool centerModel);
+
+		std::vector<const aiTexture*> loadTextureFromFBX(const aiScene* pScene);
 	};
 }

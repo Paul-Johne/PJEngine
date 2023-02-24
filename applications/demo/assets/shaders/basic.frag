@@ -1,10 +1,14 @@
 #version 450
 
+/* ### IN ### */
+
 // location out != location in (other address)
 layout(location = 0) in VIn {
 	vec3 fragColor;
 	vec3 normal;		// normal in view space
 } vIn;
+
+/* ### OUT ### */
 
 layout(location = 0) out vec4 color;
 

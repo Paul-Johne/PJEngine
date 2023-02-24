@@ -20,11 +20,18 @@ std::vector<uint32_t> pje::debugIndices = {
 	1, 2, 3
 };
 
-std::vector<pje::PJMesh> pje::debugMeshes = {
-	pje::PJMesh(pje::debugVertices, pje::debugIndices)
+std::vector<pje::PJMesh> pje::debugMesh = {
+	pje::PJMesh(pje::debugVertices, pje::debugIndices, 0)
 };
+
+std::vector<pje::PJModel> pje::loadedModels{};
 
 pje::PJBuffer pje::stagingBuffer = {};
 pje::PJBuffer pje::vertexBuffer = {};
 pje::PJBuffer pje::indexBuffer = {};
+
 pje::PJBuffer pje::uniformsBuffer = {};
+
+std::vector<pje::BoneRef> boneRefs = {};
+pje::PJBuffer pje::storeBoneRefs = {};
+pje::PJBuffer pje::storeBoneMatrices = {};

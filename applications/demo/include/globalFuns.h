@@ -30,3 +30,5 @@ namespace pje {
 
 	void loopVisualizationOf(GLFWwindow* window);
 }
+
+void setObjectNames(const pje::Context& context);
