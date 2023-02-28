@@ -3,6 +3,7 @@
 
 	#include <cstdint>				// uintXXX_t
 	#include <vulkan/vulkan.h>
+	#include <glm/gtc/matrix_transform.hpp>
 
 namespace pje::config {
 	inline constexpr	char*							appName							= "PJEngine";
@@ -22,4 +23,11 @@ namespace pje::config {
 	inline constexpr	uint32_t						initWindowHeight				= 720;		// TODO
 
 	inline constexpr	size_t							selectedPJModel					= 2;
+	inline constexpr	float							antiFbxScale					= 0.01f;
+
+	inline const		glm::mat4						initCameraPose					= glm::inverse(glm::lookAt(glm::vec3(4.0f, 2.0f, 4.0f), 
+																													glm::vec3(0.0f, 0.0f, 0.0f), 
+																													glm::vec3(0.0f, 1.0f, 0.0f)));
+	inline constexpr	float							nearPlane						= 0.1f;
+	inline constexpr	float							farPlane						= 100.0f;
 }

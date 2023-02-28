@@ -20,14 +20,16 @@ namespace pje {
 
 		ModelLoader();
 		~ModelLoader();
+
 		pje::PJModel loadModel(const std::string& filename, unsigned int pFlags, bool centerModel = false);
+		static glm::mat4 convertToColumnMajor(const aiMatrix4x4& matrix);
 
 	private:
 		std::filesystem::path		m_folderForModels;
 		std::vector<PJMesh>			m_meshesOfCurrentModel;
 
-		void recurseNodes(aiNode* node, const aiScene* pScene, bool centerModel, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices);
-		PJMesh convertMesh(aiMesh* mesh, const aiScene* pScene, bool centerModel, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices);
+		void recurseNodes(aiNode* node, const aiScene* pScene, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices, glm::mat4 accTransform = glm::mat4(1.0f));
+		PJMesh convertMesh(aiMesh* mesh, const aiScene* pScene, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices, const glm::mat4& accTransform);
 
 		std::vector<const aiTexture*> loadTextureFromFBX(const aiScene* pScene);
 	};

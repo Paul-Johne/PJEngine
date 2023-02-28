@@ -2,11 +2,13 @@
 
 #include <iostream>
 #include <memory>
+#include <algorithm>
+#include <execution>
 
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 
-pje::ModelLoader::ModelLoader() : m_models(), m_modelPaths(), m_activeModels(0), m_centerModel(false), m_folderForModels("assets/models") {
+pje::ModelLoader::ModelLoader() : m_models(), m_modelPaths(), m_activeModels(0), m_centerModel(true), m_folderForModels("assets/models") {
 	for (const auto& each : std::filesystem::directory_iterator(m_folderForModels)) {
 		auto path = each.path().string();
 
@@ -37,22 +39,48 @@ pje::PJModel pje::ModelLoader::loadModel(const std::string& filename, unsigned i
 		m_modelPaths.push_back(filename);
 	}
 
-	bool isFbx(filename.find(".fbx"));
+	bool isFbx(filename.find(".fbx") != std::string::npos);
 
 	/* Clear temp storage for next PJModel */
 	if (!m_meshesOfCurrentModel.empty())
 		m_meshesOfCurrentModel.clear();
 
 	/* Loads meshes recursively to maintain relation tree */
-	recurseNodes(pScene->mRootNode, pScene, centerModel, isFbx, offsetVertices, offsetIndices);
+	recurseNodes(pScene->mRootNode, pScene, isFbx, offsetVertices, offsetIndices);
 
 	PJModel temp_PJModel{};
 	temp_PJModel.meshes.insert(temp_PJModel.meshes.end(), m_meshesOfCurrentModel.begin(), m_meshesOfCurrentModel.end());
 	temp_PJModel.modelPath = filename;
 	temp_PJModel.centered = centerModel;
 
+	if (centerModel) {
+		glm::vec3 avgPos{ 0.0f, 0.0f, 0.0f };
+		size_t vertexCount = 0;
+
+		for (const auto& mesh : temp_PJModel.meshes) {
+			vertexCount += mesh.m_vertices.size();
+
+			for (const auto& v : mesh.m_vertices) {
+				avgPos += v.m_position;
+			}
+		}
+
+		avgPos /= vertexCount;
+
+		for (auto& mesh : temp_PJModel.meshes) {
+			std::for_each(
+				std::execution::par_unseq,
+				mesh.m_vertices.begin(),
+				mesh.m_vertices.end(),
+				[&](pje::PJVertex& v) {
+					v.m_position -= avgPos;
+				}
+			);
+		}
+	}
+	
 	/* Loads embedded textures from fbx File */
-	if (isFbx != std::string::npos) {
+	if (isFbx) {
 		std::cout << "[DEBUG] \tLoading embedded textures from: " << filename << std::endl;
 		temp_PJModel.textures = loadTextureFromFBX(pScene);
 	}
@@ -63,33 +91,48 @@ pje::PJModel pje::ModelLoader::loadModel(const std::string& filename, unsigned i
 	return temp_PJModel;
 }
 
-void pje::ModelLoader::recurseNodes(aiNode* node, const aiScene* pScene, bool centerModel, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices) {
+glm::mat4 pje::ModelLoader::convertToColumnMajor(const aiMatrix4x4& matrix) {
+	glm::mat4 res;
+	
+	for (int c = 0; c < 4; c++) {
+		for (int r = 0; r < 4; r++) {
+			// MATHE : res[c * 4 + r] = matrix[r * 4 + r]
+			res[c][r] = matrix[r][c];
+		}
+	}
+
+	return res;
+}
+
+void pje::ModelLoader::recurseNodes(aiNode* node, const aiScene* pScene, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices, glm::mat4 accTransform) {
+	glm::mat4 transform(accTransform * convertToColumnMajor(node->mTransformation));
+	
 	// extract all mesh data from this node
 	for (uint32_t i = 0; i < node->mNumMeshes; i++) {
 		// aiNode only knows index of aiMesh in aiScene
 		aiMesh* mesh = pScene->mMeshes[node->mMeshes[i]];
-		m_meshesOfCurrentModel.push_back(convertMesh(mesh, pScene, centerModel, isFbx, offsetVertices, offsetIndices));
+		m_meshesOfCurrentModel.push_back(convertMesh(mesh, pScene, isFbx, offsetVertices, offsetIndices, transform));
 	}
 
 	// go through each child's node (and all its children) in sequence
 	for (uint32_t i = 0; i < node->mNumChildren; i++) {
 		// aiNode's children only know index of aiMesh in aiScene
-		recurseNodes(node->mChildren[i], pScene, centerModel, isFbx, offsetVertices, offsetIndices);
+		recurseNodes(node->mChildren[i], pScene, isFbx, offsetVertices, offsetIndices, transform);
 	}
 }
 
-pje::PJMesh pje::ModelLoader::convertMesh(aiMesh* mesh, const aiScene* pScene, bool centerModel, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices) {
+pje::PJMesh pje::ModelLoader::convertMesh(aiMesh* mesh, const aiScene* pScene, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices, const glm::mat4& accTransform) {
 	std::vector<PJVertex> vertices;
 	std::vector<uint32_t> indices;
 
-	// copy VBO
+	// Copy VBO
 	if (mesh->HasNormals()) {
 		for (uint32_t i = 0; i < mesh->mNumVertices; i++) {
 			if (isFbx) {
 				PJVertex currentVertex(
-					{ mesh->mVertices[i].x, mesh->mVertices[i].z, mesh->mVertices[i].y },	// glm::vec3 m_position
+					{ mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z },	// glm::vec3 m_position
 					{ 1.0f, 1.0f, 0.0f },													// glm::vec3 m_color	
-					{ mesh->mNormals[i].x, mesh->mNormals[i].z, mesh->mNormals[i].y }		// glm::vec3 m_normal
+					{ mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z }		// glm::vec3 m_normal
 				);
 
 				vertices.push_back(currentVertex);
@@ -109,20 +152,29 @@ pje::PJMesh pje::ModelLoader::convertMesh(aiMesh* mesh, const aiScene* pScene, b
 		throw std::runtime_error("Error at ModelLoader::translateMesh : Mesh has no normals!");
 	}
 
-	if (centerModel) {
-		glm::vec3 avgPos{ 0.0f, 0.0f, 0.0f };
-
-		for (const auto& v : vertices) {
-			avgPos += v.m_position;
+	// Apply initial tranform to vertices in parallel | [&] capture clause => makes accTransform visible
+	std::for_each(
+		std::execution::par_unseq, 
+		vertices.begin(), 
+		vertices.end(), 
+		[&](pje::PJVertex& v) {
+			v.m_position = glm::vec3(accTransform * glm::vec4(v.m_position, 1.0f));
+			v.m_normal = glm::normalize(glm::vec3(glm::transpose(glm::inverse(accTransform)) * glm::vec4(v.m_normal, 0.0f)));
 		}
-		avgPos /= vertices.size();
+	);
 
-		for (auto& v : vertices) {
-			v.m_position -= avgPos;
-		}
+	if (isFbx) {
+		std::for_each(
+			std::execution::par_unseq,
+			vertices.begin(),
+			vertices.end(),
+			[&](pje::PJVertex& v) {
+				v.m_position *= pje::config::antiFbxScale;
+			}
+		);
 	}
 
-	// copy IBO
+	// Copy IBO
 	for (uint32_t i = 0; i < mesh->mNumFaces; i++) {
 		aiFace face = mesh->mFaces[i];
 		for (uint32_t j = 0; j < face.mNumIndices; j++) {
@@ -133,7 +185,7 @@ pje::PJMesh pje::ModelLoader::convertMesh(aiMesh* mesh, const aiScene* pScene, b
 	offsetVertices += vertices.size();
 	offsetIndices += indices.size();
 
-	/* returns PJMesh without own offset expansion */
+	/* Returns PJMesh without own offset expansion */
 	return PJMesh(vertices, indices, offsetVertices - vertices.size(), offsetIndices - indices.size());
 }
 

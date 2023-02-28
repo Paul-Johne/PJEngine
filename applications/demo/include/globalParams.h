@@ -12,6 +12,8 @@
 	#include <assimp/texture.h>
 	#include <imgui.h>
 
+	#include <stb_image.h>
+
 	#include <config.h>
 
 /* Collection of global parameters */
@@ -70,6 +72,8 @@ namespace pje {
 		bool												isWindowMinimized				= false;
 		uint32_t											windowWidth						= config::initWindowWidth;
 		uint32_t											windowHeight					= config::initWindowHeight;
+
+		glm::mat4											cameraPose						= config::initCameraPose;
 	};
 	extern Context context;
 
@@ -173,6 +177,8 @@ namespace pje {
 		std::vector<const aiTexture*>	textures;
 		std::string						modelPath;
 		bool							centered;
+
+		void prepareTexture();
 	};
 	extern std::vector<pje::PJModel>	loadedModels;
 

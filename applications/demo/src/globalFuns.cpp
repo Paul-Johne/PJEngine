@@ -1667,17 +1667,13 @@ void updateMatrices() {
 		glm::vec3(0.0f, -1.0f, 0.0f)
 	);
 
-	pje::uniforms.viewMatrix = glm::lookAt(		// inverse modelMatrix_cam
-		glm::vec3(4.0f, 2.0f, 4.0f),			// eye in world space (usally world moves around camera and NOT the other way around)
-		glm::vec3(0.0f, 0.0f, 0.0f),
-		glm::vec3(0.0f, 1.0f, 0.0f)
-	);
+	pje::uniforms.viewMatrix = glm::inverse(pje::context.cameraPose);
 
 	pje::uniforms.projectionMatrix = glm::perspective(
 		glm::radians(60.0f),
 		pje::context.windowWidth / (float)pje::context.windowHeight,
-		0.1f,
-		10.0f
+		pje::config::nearPlane,
+		pje::config::farPlane
 	);
 
 	/* Vulkan y axis goes down | OpenGL y axis goes up */

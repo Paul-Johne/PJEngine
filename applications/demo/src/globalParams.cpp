@@ -1,5 +1,9 @@
 #include <globalParams.h>
 
+void pje::PJModel::prepareTexture() {
+
+}
+
 pje::Context pje::context = {};
 
 pje::Uniforms pje::uniforms = {

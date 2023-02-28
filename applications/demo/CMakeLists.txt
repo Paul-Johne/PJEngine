@@ -83,16 +83,22 @@ add_custom_command(
     #COMMAND ${CMAKE_COMMAND} -E copy
     #        "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_3d.obj"
     #        "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_3d.obj"
-    COMMAND ${CMAKE_COMMAND} -E copy
-            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_3d.fbx"
-            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_3d.fbx"
     #COMMAND ${CMAKE_COMMAND} -E copy
     #        "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_3d.mtl"
     #        "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_3d.mtl"
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_3d.fbx"
+            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_3d.fbx"
     COMMAND ${CMAKE_COMMAND} -E copy
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/BAUM_by_efrohle.fbx"
             "${CMAKE_CURRENT_BINARY_DIR}/assets/models/BAUM_by_efrohle.fbx"
     COMMAND ${CMAKE_COMMAND} -E copy
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_chilli_plant.fbx"
             "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_chilli_plant.fbx"
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_chilli_plant.obj"
+            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_chilli_plant.obj"
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_chilli_plant.mtl"
+            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_chilli_plant.mtl"
 )

@@ -24,6 +24,8 @@ set(DEMO_LIB_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/imgui_widgets.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/imgui_impl_glfw.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/imgui_impl_vulkan.cpp"
+
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/stb_image.cpp"
 )
 
 # name used for target_link_libraries() in application
