@@ -32,7 +32,7 @@ inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& physicalDevice) {
 
 	uint32_t apiVersion = properties.apiVersion;
 
-	std::cout << "[OS] Available GPU:\t\t" << properties.deviceName << std::endl;
+	std::cout << "[PJE] Available GPU:\t\t" << properties.deviceName << std::endl;
 	std::cout << "\t\t\t\tVulkan API Version:\t" << VK_VERSION_MAJOR(apiVersion) << "." << VK_VERSION_MINOR(apiVersion) << "." << VK_VERSION_PATCH(apiVersion) << std::endl;
 	std::cout << "\t\t\t\tDevice Type:\t\t" << properties.deviceType << std::endl;
 

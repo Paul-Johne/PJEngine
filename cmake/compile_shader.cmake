@@ -2,7 +2,9 @@ include(CMakeParseArguments)
 # -------- CMake Vulkan Shader Compilation Helper --------
 # Creates a custom target that compiles a given set of shader files into SPIR-V using "glslc".
 # Optionally, it can apply the spirv-opt optimizer to the SPIR-V output.
+#
 # CREATED BY FABIAN FRIEDERICHS
+#
 # --------------------------------------------------------
 # Usage:
 #   compile_shaders(

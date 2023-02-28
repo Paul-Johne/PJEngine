@@ -4,6 +4,7 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.14)
 
 set(DEMO_SOURCES 
     "${CMAKE_CURRENT_SOURCE_DIR}/include/app.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/config.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/debugUtils.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/globalFuns.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/globalParams.h"
@@ -55,13 +56,14 @@ target_link_libraries(demo PRIVATE
     glm::glm
     assimp::assimp
 
-    # Internal Dependencies => ImGui will be included directly via demo_lib
+    # Internal Dependencies => ImGui and stb
     demo_lib
 )
 
 # include .cmake file with additional functionality
 include(compile_shader)
 
+# provided by Fabian Friederichs
 compile_shaders(
     demo_shaders
     SOURCES
@@ -87,9 +89,9 @@ add_custom_command(
     #COMMAND ${CMAKE_COMMAND} -E copy
     #        "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_3d.mtl"
     #        "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_3d.mtl"
-    #COMMAND ${CMAKE_COMMAND} -E copy
-    #        "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/BAUM_by_efrohle.fbx"
-    #        "${CMAKE_CURRENT_BINARY_DIR}/assets/models/BAUM_by_efrohle.fbx"
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/BAUM_by_efrohle.fbx"
+            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/BAUM_by_efrohle.fbx"
     COMMAND ${CMAKE_COMMAND} -E copy
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_chilli_plant.fbx"
             "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_chilli_plant.fbx"

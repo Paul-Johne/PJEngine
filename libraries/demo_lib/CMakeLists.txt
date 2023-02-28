@@ -14,6 +14,8 @@ set(DEMO_LIB_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/include/imgui_impl_glfw.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/imgui_impl_vulkan.h"
 
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/stb_image.h"
+
     # src folder
     "${CMAKE_CURRENT_SOURCE_DIR}/src/imgui.cpp"
     #"${CMAKE_CURRENT_SOURCE_DIR}/src/imgui_demo.cpp"

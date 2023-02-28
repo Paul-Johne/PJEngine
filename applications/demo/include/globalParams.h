@@ -12,73 +12,64 @@
 	#include <assimp/texture.h>
 	#include <imgui.h>
 
+	#include <config.h>
+
 /* Collection of global parameters */
 namespace pje {
 
 	/* #### CONTEXT #### */
 	struct Context {
-		VkResult	result;
-		const char* appName = "PJEngine";
-		std::chrono::time_point<std::chrono::steady_clock> startTimePoint;
+		VkResult											result;
+		std::chrono::time_point<std::chrono::steady_clock>	startTimePoint;
 
-		VkInstance						vulkanInstance;
-		VkSurfaceKHR					surface;
-		std::vector<VkPhysicalDevice>	physicalDevices;
-		VkDevice						logicalDevice;
+		VkInstance											vulkanInstance					= VK_NULL_HANDLE;
+		VkSurfaceKHR										surface							= VK_NULL_HANDLE;
+		std::vector<VkPhysicalDevice>						physicalDevices;
+		VkDevice											logicalDevice					= VK_NULL_HANDLE;
 
-		VkPhysicalDeviceType			preferredPhysicalDeviceType = VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
-		std::vector<VkQueueFlagBits>	neededFamilyQueueAttributes = { VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT };
-		const uint32_t					neededSurfaceImages = 2;
-		VkPresentModeKHR				neededPresentationMode = VkPresentModeKHR::VK_PRESENT_MODE_IMMEDIATE_KHR;
+		// dynamically choosen by selectGPU()
+		uint32_t											choosenPhysicalDevice;						
+		uint32_t											choosenQueueFamily;
 
-		uint32_t						choosenPhysicalDevice;						// dynamically by selectGPU()
-		uint32_t						choosenQueueFamily;							// dynamically by selectGPU()
+		VkQueue												queueForPrototyping				= VK_NULL_HANDLE;
 
-		VkQueue							queueForPrototyping;
+		VkSwapchainKHR										swapchain						= VK_NULL_HANDLE;
+		uint32_t											numberOfImagesInSwapchain		= 0;
+		std::unique_ptr<VkImageView[]>						swapchainImageViews;
+		std::unique_ptr<VkFramebuffer[]>					swapchainFramebuffers;
 
-		VkSwapchainKHR						swapchain = VK_NULL_HANDLE;
-		uint32_t							numberOfImagesInSwapchain = 0;
-		std::unique_ptr<VkImageView[]>		swapchainImageViews;
-		std::unique_ptr<VkFramebuffer[]>	swapchainFramebuffers;
+		VkDeviceMemory										msaaImageMemory					= VK_NULL_HANDLE;
+		std::unique_ptr<VkImage>							msaaImage;
+		std::unique_ptr<VkImageView>						msaaImageView;
+		VkDeviceMemory										depthImageMemory				= VK_NULL_HANDLE;
+		std::unique_ptr<VkImage>							depthImage;
+		std::unique_ptr<VkImageView>						depthImageView;
 
-		VkSampleCountFlagBits				msaaFactor = VkSampleCountFlagBits::VK_SAMPLE_COUNT_4_BIT;
+		VkShaderModule										shaderModuleBasicVert			= VK_NULL_HANDLE;
+		VkShaderModule										shaderModuleBasicFrag			= VK_NULL_HANDLE;
+		std::vector<VkPipelineShaderStageCreateInfo>		shaderStageInfos;
 
-		VkDeviceMemory						msaaImageMemory;
-		std::unique_ptr<VkImage>			msaaImage;
-		std::unique_ptr<VkImageView>		msaaImageView;
+		VkRenderPass										renderPass						= VK_NULL_HANDLE;
+		VkPipelineLayout									pipelineLayout					= VK_NULL_HANDLE;
+		VkPipeline											pipeline						= VK_NULL_HANDLE;
 
-		VkDeviceMemory						depthImageMemory;
-		std::unique_ptr<VkImage>			depthImage;
-		std::unique_ptr<VkImageView>		depthImageView;
+		VkCommandPool										commandPool						= VK_NULL_HANDLE;
+		std::unique_ptr<VkCommandBuffer[]>					commandBuffers;
 
-		VkShaderModule									shaderModuleBasicVert;
-		VkShaderModule									shaderModuleBasicFrag;
-		std::vector<VkPipelineShaderStageCreateInfo>	shaderStageInfos;
+		VkDescriptorSetLayout								descriptorSetLayout				= VK_NULL_HANDLE;
+		VkDescriptorPool									descriptorPool					= VK_NULL_HANDLE;
+		VkDescriptorSet										descriptorSet					= VK_NULL_HANDLE;
 
-		VkPipelineLayout	pipelineLayout;
-		VkRenderPass		renderPass;
-		VkPipeline			pipeline;
+		// 2 States: signaled, unsignaled
+		VkSemaphore											semaphoreSwapchainImageReceived	= VK_NULL_HANDLE;
+		VkSemaphore											semaphoreRenderingFinished		= VK_NULL_HANDLE;
+		VkFence												fenceRenderFinished				= VK_NULL_HANDLE;
+		VkFence												fenceCopiedBuffer				= VK_NULL_HANDLE;
 
-		VkCommandPool						commandPool;
-		std::unique_ptr<VkCommandBuffer[]>	commandBuffers;
-
-		VkDescriptorSetLayout descriptorSetLayout;
-		VkDescriptorPool descriptorPool;
-		VkDescriptorSet descriptorSet;
-
-		const VkFormat		outputFormat = VkFormat::VK_FORMAT_B8G8R8A8_UNORM;		// VkFormat 44
-		const VkFormat		depthFormat = VkFormat::VK_FORMAT_D32_SFLOAT;
-		const float			clearValueDefault[4] = {0.0f, 0.0f, 0.0f, 1.0f};		// DEFAULT BACKGROUND
-
-		VkSemaphore	semaphoreSwapchainImageReceived;
-		VkSemaphore	semaphoreRenderingFinished;
-		VkFence		fenceRenderFinished;											// 2 States: signaled, unsignaled
-		VkFence		fenceCopiedBuffer;
-
-		GLFWwindow* window;
-		bool		isWindowMinimized = false;
-		uint32_t	windowWidth = 1280;
-		uint32_t	windowHeight = 720;
+		GLFWwindow*											window;
+		bool												isWindowMinimized				= false;
+		uint32_t											windowWidth						= config::initWindowWidth;
+		uint32_t											windowHeight					= config::initWindowHeight;
 	};
 	extern Context context;
 
@@ -147,7 +138,7 @@ namespace pje {
 			attributes[3].location = 3;
 			attributes[3].binding = 0;
 			attributes[3].format = VkFormat::VK_FORMAT_R32G32_UINT;
-			attributes[3].offset = offsetof(PJVertex, m_boneRange);
+			attributes[3].offset = offsetof(PJVertex, m_boneRange);				// OR: 9 * 4 Byte = 36
 
 			return attributes;
 		}
@@ -158,13 +149,17 @@ namespace pje {
 	/* #### Mesh #### */
 	class PJMesh {
 	public:
-		std::vector<PJVertex>	m_vertices;
-		std::vector<uint32_t>	m_indices;
-		uint32_t				m_offsetToPriorMeshes;
+		using vertexType = PJVertex;
+		using indexType = uint32_t;
+
+		std::vector<vertexType>	m_vertices;
+		std::vector<indexType>	m_indices;
+		indexType				m_offsetVertices;		// to prior meshes
+		indexType				m_offsetIndices;		// to prior meshes
 
 		/* m_vertices copies data of vertices */
-		PJMesh(const std::vector<PJVertex>& vertices, const std::vector<uint32_t>& indices, const uint32_t offset) :
-			m_vertices(vertices), m_indices(indices) , m_offsetToPriorMeshes(offset) {}
+		PJMesh(const std::vector<PJVertex>& vertices, const std::vector<uint32_t>& indices, uint32_t offsetVertices, uint32_t offsetIndices) :
+			m_vertices(vertices), m_indices(indices) , m_offsetVertices(offsetVertices), m_offsetIndices(offsetIndices) {}
 
 		~PJMesh()
 			{}
@@ -172,7 +167,8 @@ namespace pje {
 	extern std::vector<PJMesh>	debugMesh;
 
 	/* #### Model #### */
-	struct PJModel {
+	class PJModel {
+	public:
 		std::vector<PJMesh>				meshes;
 		std::vector<const aiTexture*>	textures;
 		std::string						modelPath;

@@ -24,11 +24,10 @@ namespace pje {
 
 	private:
 		std::filesystem::path		m_folderForModels;
-		std::vector<PJMesh>			m_temp_meshesOfModel;
-		uint32_t					m_offsetsCurrentPJModel;
+		std::vector<PJMesh>			m_meshesOfCurrentModel;
 
-		void recurseNodes(aiNode* node, const aiScene* pScene, bool centerModel);
-		PJMesh convertMesh(aiMesh* mesh, const aiScene* pScene, bool centerModel);
+		void recurseNodes(aiNode* node, const aiScene* pScene, bool centerModel, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices);
+		PJMesh convertMesh(aiMesh* mesh, const aiScene* pScene, bool centerModel, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices);
 
 		std::vector<const aiTexture*> loadTextureFromFBX(const aiScene* pScene);
 	};

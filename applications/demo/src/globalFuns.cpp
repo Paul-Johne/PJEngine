@@ -240,6 +240,56 @@ void sendDataToVRAM(pje::PJBuffer& localDeviceBuffer, vector<T> objectTarget, Vk
 	copyToLocalDeviceBuffer(objectTarget.data(), objectByteSize, localDeviceBuffer.buffer);
 }
 
+void sendPJModelToVRAM(pje::PJBuffer& vertexBuffer, pje::PJBuffer& indexBuffer, const pje::PJModel& objectTarget) {
+	VkDeviceSize vertexBufferSize = 0;
+	VkDeviceSize indexBufferSize = 0;
+
+	for (const auto& mesh : objectTarget.meshes) {
+		vertexBufferSize += (sizeof(pje::PJMesh::vertexType) * mesh.m_vertices.size());
+		indexBufferSize += (sizeof(pje::PJMesh::indexType) * mesh.m_indices.size());
+	}
+
+	createPJBuffer(
+		vertexBuffer,
+		vertexBufferSize,
+		VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		"vertexBuffer"
+	);
+
+	createPJBuffer(
+		indexBuffer,
+		indexBufferSize,
+		VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		"indexBuffer"
+	);
+
+	VkDeviceSize vByteOffset(0);
+	VkDeviceSize iByteOffset(0);
+
+	for (const auto& mesh : objectTarget.meshes) {
+		VkDeviceSize vByteSize(sizeof(pje::PJMesh::vertexType) * mesh.m_vertices.size());
+		VkDeviceSize iByteSize(sizeof(pje::PJMesh::indexType) * mesh.m_indices.size());
+
+		copyToLocalDeviceBuffer(
+			mesh.m_vertices.data(),
+			vByteSize,
+			vertexBuffer.buffer,
+			vByteOffset
+		);
+		copyToLocalDeviceBuffer(
+			mesh.m_indices.data(),
+			iByteSize,
+			indexBuffer.buffer,
+			iByteOffset
+		);
+
+		vByteOffset += vByteSize;
+		iByteOffset += iByteSize;
+	}
+}
+
 // ################################################################################################################################################################## //
 
 /* Defines the Layout of VkDescriptorSet which declares needed data in each shader */
@@ -364,11 +414,11 @@ void createDepthAndMSAA(VkExtent3D imageSize) {
 	msaaImageInfo.pNext = nullptr;
 	msaaImageInfo.flags = 0;
 	msaaImageInfo.imageType = VkImageType::VK_IMAGE_TYPE_2D;
-	msaaImageInfo.format = pje::context.outputFormat;
+	msaaImageInfo.format = pje::config::outputFormat;
 	msaaImageInfo.extent = imageSize;
 	msaaImageInfo.mipLevels = 1;
 	msaaImageInfo.arrayLayers = 1;											// for Cubemaps :)
-	msaaImageInfo.samples = pje::context.msaaFactor;
+	msaaImageInfo.samples = pje::config::msaaFactor;
 	msaaImageInfo.tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
 	msaaImageInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	msaaImageInfo.sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE;
@@ -403,7 +453,7 @@ void createDepthAndMSAA(VkExtent3D imageSize) {
 	msaaImageViewInfo.flags = 0;
 	msaaImageViewInfo.image = *pje::context.msaaImage;
 	msaaImageViewInfo.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
-	msaaImageViewInfo.format = pje::context.outputFormat;
+	msaaImageViewInfo.format = pje::config::outputFormat;
 	msaaImageViewInfo.components = VkComponentMapping{
 		VK_COMPONENT_SWIZZLE_IDENTITY	// properties r,g,b,a stay as their identity 
 	};
@@ -428,11 +478,11 @@ void createDepthAndMSAA(VkExtent3D imageSize) {
 	depthImageInfo.pNext = nullptr;
 	depthImageInfo.flags = 0;
 	depthImageInfo.imageType = VkImageType::VK_IMAGE_TYPE_2D;
-	depthImageInfo.format = pje::context.depthFormat;						// TODO (civ)
+	depthImageInfo.format = pje::config::depthFormat;						// TODO (civ)
 	depthImageInfo.extent = imageSize;
 	depthImageInfo.mipLevels = 1;
 	depthImageInfo.arrayLayers = 1;											// for Cubemaps :)
-	depthImageInfo.samples = pje::context.msaaFactor;
+	depthImageInfo.samples = pje::config::msaaFactor;
 	depthImageInfo.tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
 	depthImageInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 	depthImageInfo.sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE;
@@ -464,7 +514,7 @@ void createDepthAndMSAA(VkExtent3D imageSize) {
 	depthImageViewInfo.flags = 0;
 	depthImageViewInfo.image = *pje::context.depthImage;
 	depthImageViewInfo.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
-	depthImageViewInfo.format = pje::context.depthFormat;
+	depthImageViewInfo.format = pje::config::depthFormat;
 	depthImageViewInfo.components = VkComponentMapping{
 		VK_COMPONENT_SWIZZLE_IDENTITY	// properties r,g,b,a stay as their identity 
 	};
@@ -531,7 +581,7 @@ void pje::cleanupRealtimeRendering(bool reset) {
 }
 
 /* Recording of context.commandBuffers - Declares what has to be rendered later */
-void recordContextCommandBuffers(pje::PJMesh& renderable, uint32_t numberOfCommandBuffer) {
+void recordRenderCommands(pje::PJModel& renderable, uint32_t numberOfCommandBuffer) {
 	// Defines CommandBuffer behavior
 	VkCommandBufferBeginInfo commandBufferBeginInfo;
 	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -541,17 +591,17 @@ void recordContextCommandBuffers(pje::PJMesh& renderable, uint32_t numberOfComma
 
 	array<VkClearValue, 3> clearValues{};
 	clearValues[0].color = VkClearColorValue{ 
-		pje::context.clearValueDefault[0], 
-		pje::context.clearValueDefault[1], 
-		pje::context.clearValueDefault[2],
-		pje::context.clearValueDefault[3]
+		pje::config::clearValueDefault[0], 
+		pje::config::clearValueDefault[1], 
+		pje::config::clearValueDefault[2],
+		pje::config::clearValueDefault[3]
 	};
 	clearValues[1].depthStencil.depth = 1.0f;
 	clearValues[2].color = VkClearColorValue{
-		pje::context.clearValueDefault[0],
-		pje::context.clearValueDefault[1],
-		pje::context.clearValueDefault[2],
-		pje::context.clearValueDefault[3]
+		pje::config::clearValueDefault[0],
+		pje::config::clearValueDefault[1],
+		pje::config::clearValueDefault[2],
+		pje::config::clearValueDefault[3]
 	};
 
 	// Telling command buffer which render pass to start
@@ -604,9 +654,9 @@ void recordContextCommandBuffers(pje::PJMesh& renderable, uint32_t numberOfComma
 		vkCmdBindIndexBuffer(pje::context.commandBuffers[i], pje::indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
 		// DRAW => drawing on swapchain images
-		vkCmdDrawIndexed(pje::context.commandBuffers[i], renderable.m_indices.size(), 1, 0, 0, 0);
-
-		// TODO ===> FOR LOOP - START
+		for (const auto& mesh : renderable.meshes) {
+			vkCmdDrawIndexed(pje::context.commandBuffers[i], mesh.m_indices.size(), 1, mesh.m_offsetIndices, mesh.m_offsetVertices, 0);
+		}
 
 		vkCmdEndRenderPass(pje::context.commandBuffers[i]);
 
@@ -627,8 +677,8 @@ void setupRealtimeRendering(bool reset = false) {
 	swapchainInfo.pNext = nullptr;
 	swapchainInfo.flags = 0;
 	swapchainInfo.surface = pje::context.surface;
-	swapchainInfo.minImageCount = pje::context.neededSurfaceImages;					// requires AT LEAST 2 (double buffering)
-	swapchainInfo.imageFormat = pje::context.outputFormat;							// TODO ( choose dynamically )
+	swapchainInfo.minImageCount = pje::config::neededSurfaceImages;					// requires AT LEAST 2 (double buffering)
+	swapchainInfo.imageFormat = pje::config::outputFormat;							// TODO ( choose dynamically )
 	swapchainInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;				// TODO ( choose dynamically )
 	swapchainInfo.imageExtent = VkExtent2D{ pje::context.windowWidth, pje::context.windowHeight };
 	swapchainInfo.imageArrayLayers = 1;
@@ -667,7 +717,7 @@ void setupRealtimeRendering(bool reset = false) {
 	imageViewInfo.pNext = nullptr;
 	imageViewInfo.flags = 0;
 	imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	imageViewInfo.format = pje::context.outputFormat;			// TODO ( choose dynamically )
+	imageViewInfo.format = pje::config::outputFormat;			// TODO ( choose dynamically )
 	imageViewInfo.components = VkComponentMapping{
 		VK_COMPONENT_SWIZZLE_IDENTITY	// properties r,g,b,a stay as their identity 
 	};
@@ -714,8 +764,8 @@ void setupRealtimeRendering(bool reset = false) {
 
 		VkAttachmentDescription attachmentDescriptionMSAA;
 		attachmentDescriptionMSAA.flags = 0;
-		attachmentDescriptionMSAA.format = pje::context.outputFormat;
-		attachmentDescriptionMSAA.samples = pje::context.msaaFactor;
+		attachmentDescriptionMSAA.format = pje::config::outputFormat;
+		attachmentDescriptionMSAA.samples = pje::config::msaaFactor;
 		attachmentDescriptionMSAA.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		attachmentDescriptionMSAA.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachmentDescriptionMSAA.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -725,8 +775,8 @@ void setupRealtimeRendering(bool reset = false) {
 
 		VkAttachmentDescription attachmentDescriptionDepth;
 		attachmentDescriptionDepth.flags = 0;
-		attachmentDescriptionDepth.format = pje::context.depthFormat;
-		attachmentDescriptionDepth.samples = pje::context.msaaFactor;
+		attachmentDescriptionDepth.format = pje::config::depthFormat;
+		attachmentDescriptionDepth.samples = pje::config::msaaFactor;
 		attachmentDescriptionDepth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		attachmentDescriptionDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachmentDescriptionDepth.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -737,7 +787,7 @@ void setupRealtimeRendering(bool reset = false) {
 		// VkAttachmentDescription is held by renderPass for its subpasses (VkAttachmentReference.attachment uses VkAttachmentDescription)
 		VkAttachmentDescription attachmentDescriptionResolve;
 		attachmentDescriptionResolve.flags = 0;
-		attachmentDescriptionResolve.format = pje::context.outputFormat;					// has the same format as the swapchainInfo.imageFormat
+		attachmentDescriptionResolve.format = pje::config::outputFormat;					// has the same format as the swapchainInfo.imageFormat
 		attachmentDescriptionResolve.samples = VK_SAMPLE_COUNT_1_BIT;						// FlagBit => multisampling n_BIT
 		attachmentDescriptionResolve.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;					// what happens with the buffer after loading data
 		attachmentDescriptionResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;				// what happens with the buffer after storing data
@@ -932,7 +982,7 @@ void setupRealtimeRendering(bool reset = false) {
 		multisampleInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 		multisampleInfo.pNext = nullptr;
 		multisampleInfo.flags = 0;
-		multisampleInfo.rasterizationSamples = pje::context.msaaFactor;		// precision of the sampling
+		multisampleInfo.rasterizationSamples = pje::config::msaaFactor;		// precision of the sampling
 		multisampleInfo.sampleShadingEnable = VK_FALSE;						// enables super sampling
 		multisampleInfo.minSampleShading = 1.0f;
 		multisampleInfo.pSampleMask = nullptr;
@@ -994,9 +1044,8 @@ void setupRealtimeRendering(bool reset = false) {
 
 	if (!reset) {
 		/* Allocation of VkBuffer to transfer CPU vertices onto GPU */
-		sendDataToVRAM(pje::vertexBuffer, pje::loadedModels[0].meshes[0].m_vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, "vertexBuffer");
-		sendDataToVRAM(pje::indexBuffer, pje::loadedModels[0].meshes[0].m_indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, "indexBuffer");
-		
+		sendPJModelToVRAM(pje::vertexBuffer, pje::indexBuffer, pje::loadedModels[pje::config::selectedPJModel]);
+
 		/* TEMPORARY */
 		createPJBuffer(pje::storeBoneRefs, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "storeBoneRefs");
 		createPJBuffer(pje::storeBoneMatrices, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "storeBoneMatrices");
@@ -1060,7 +1109,7 @@ void setupRealtimeRendering(bool reset = false) {
 	}
 	
 	/* Record CommandBuffers designated to rendering */
-	recordContextCommandBuffers(pje::loadedModels[0].meshes[0], pje::context.numberOfImagesInSwapchain);
+	recordRenderCommands(pje::loadedModels[pje::config::selectedPJModel], pje::context.numberOfImagesInSwapchain);
 }
 
 /* Callback for glfwSetWindowSizeCallback */
@@ -1151,18 +1200,18 @@ void selectGPU(const vector<VkPhysicalDevice> physicalDevices, VkPhysicalDeviceT
 		VkPhysicalDeviceProperties props;
 		vkGetPhysicalDeviceProperties(physicalDevice, &props);
 
-		cout << "\n[OS] GPU [" << props.deviceName << "] was found." << endl;
+		cout << "\n[PJE] GPU [" << props.deviceName << "] was found." << endl;
 		if (props.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-			cout << "[OS] GPU is VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU." << endl;
+			cout << "[PJE] GPU is VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU." << endl;
 		if (props.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
-			cout << "[OS] GPU is VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU." << endl;
+			cout << "[PJE] GPU is VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU." << endl;
 
 		if (props.deviceType == preferredType) {
 			++requirementCounter;
-			cout << "[OS] Preferred device type was found." << endl;
+			cout << "[PJE] Preferred device type was found." << endl;
 		}
 		else {
-			cout << "\t[OS] Preferred device type wasn't found." << endl;
+			cout << "\t[PJE] Preferred device type wasn't found." << endl;
 			break;
 		}
 
@@ -1192,12 +1241,12 @@ void selectGPU(const vector<VkPhysicalDevice> physicalDevices, VkPhysicalDeviceT
 			}
 
 			if (!foundQueueFamily) {
-				cout << "\t[OS] No suitable queue family was found." << endl;
+				cout << "\t[PJE] No suitable queue family was found." << endl;
 				break;
 			}
 			else {
 				++requirementCounter;
-				cout << "[OS] pje::context.choosenQueueFamily was set to : " << pje::context.choosenQueueFamily << endl;
+				cout << "[PJE] pje::context.choosenQueueFamily was set to : " << pje::context.choosenQueueFamily << endl;
 			}
 		}
 
@@ -1207,10 +1256,10 @@ void selectGPU(const vector<VkPhysicalDevice> physicalDevices, VkPhysicalDeviceT
 
 			if (surfaceCapabilities.minImageCount >= neededSurfaceImages) {
 				++requirementCounter;
-				cout << "[OS] Physical device supports needed amount of surface images" << endl;
+				cout << "[PJE] Physical device supports needed amount of surface images" << endl;
 			}
 			else {
-				cout << "\t[OS] Physical device cannot provide the needed amount of surface images" << endl;
+				cout << "\t[PJE] Physical device cannot provide the needed amount of surface images" << endl;
 				break;
 			}
 		}
@@ -1231,12 +1280,12 @@ void selectGPU(const vector<VkPhysicalDevice> physicalDevices, VkPhysicalDeviceT
 			}
 
 			if (!foundVkFormat) {
-				cout << "\t[OS] Required VkFormat wasn't provided by the physical device" << endl;
+				cout << "\t[PJE] Required VkFormat wasn't provided by the physical device" << endl;
 				break;
 			}
 			else {
 				++requirementCounter;
-				cout << "[OS] Physical device supports required VkFormat" << endl;
+				cout << "[PJE] Physical device supports required VkFormat" << endl;
 			}
 		}
 
@@ -1257,22 +1306,22 @@ void selectGPU(const vector<VkPhysicalDevice> physicalDevices, VkPhysicalDeviceT
 			}
 
 			if (!foundPresentMode) {
-				cout << "\t[OS] Required VkPresentModeKHR wasn't provided by the physical device" << endl;
+				cout << "\t[PJE] Required VkPresentModeKHR wasn't provided by the physical device" << endl;
 				break;
 			}
 			else {
 				++requirementCounter;
-				cout << "[OS] Physical device supports required VkPresentModeKHR" << endl;
+				cout << "[PJE] Physical device supports required VkPresentModeKHR" << endl;
 			}
 		}
 
 		if (requirementCounter == AMOUNT_OF_REQUIREMENTS) {
-			cout << "[OS] PJEngine is choosing " << props.deviceName << ".\n" << endl;
+			cout << "[PJE] PJEngine is choosing " << props.deviceName << ".\n" << endl;
 			pje::context.choosenPhysicalDevice = 0;
 			return;
 		}
 		else {
-			cout << "\t[OS] PJEngine declined " << props.deviceName << ".\n" << endl;
+			cout << "\t[PJE] PJEngine declined " << props.deviceName << ".\n" << endl;
 		}
 	}
 
@@ -1285,13 +1334,13 @@ int pje::startVulkan() {
 	VkApplicationInfo appInfo;
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;				// sType for (GPU) driver
 	appInfo.pNext = nullptr;
-	appInfo.pApplicationName = pje::context.appName;
+	appInfo.pApplicationName = pje::config::appName;
 	appInfo.applicationVersion = VK_MAKE_VERSION(0, 0, 0);
 	appInfo.pEngineName = "PJ Engine";
 	appInfo.engineVersion = VK_MAKE_VERSION(0, 0, 0);
 	appInfo.apiVersion = VK_API_VERSION_1_1;
 
-	cout << "Engine started.." << endl;
+	cout << "[PJE] Engine started.." << endl;
 
 	/* LAYERs act like hooks to intercept Vulkan API calls */
 	uint32_t numberOfInstanceLayers = 0;
@@ -1300,7 +1349,7 @@ int pje::startVulkan() {
 	auto availableInstanceLayers = vector<VkLayerProperties>(numberOfInstanceLayers);
 	vkEnumerateInstanceLayerProperties(&numberOfInstanceLayers, availableInstanceLayers.data());
 
-	cout << "\n[OS] Available Instance Layers:\t" << numberOfInstanceLayers << endl;
+	cout << "\n[PJE] Available Instance Layers:\t" << numberOfInstanceLayers << endl;
 	for (uint32_t i = 0; i < numberOfInstanceLayers; i++) {
 		cout << "\tLayer:\t" << availableInstanceLayers[i].layerName << endl;
 		cout << "\t\t\t" << availableInstanceLayers[i].description << endl;
@@ -1324,7 +1373,7 @@ int pje::startVulkan() {
 	auto availableInstanceExtensions = vector<VkExtensionProperties>(numberOfInstanceExtensions);
 	vkEnumerateInstanceExtensionProperties(nullptr, &numberOfInstanceExtensions, availableInstanceExtensions.data());
 
-	cout << "\n[OS] Available Instance Extensions:\t" << numberOfInstanceExtensions << endl;
+	cout << "\n[PJE] Available Instance Extensions:\t" << numberOfInstanceExtensions << endl;
 	for (uint32_t i = 0; i < numberOfInstanceExtensions; i++) {
 		cout << "\tExtension:\t" << availableInstanceExtensions[i].extensionName << endl;
 	}
@@ -1418,7 +1467,7 @@ int pje::startVulkan() {
 		2) get reference for a number of GPUs and store them in an array of physical devices */
 	vkEnumeratePhysicalDevices(pje::context.vulkanInstance, &numberOfPhysicalDevices, pje::context.physicalDevices.data());
 
-	cout << "\n[OS] Number of GPUs:\t\t" << numberOfPhysicalDevices << endl;
+	cout << "\n[PJE] Number of GPUs:\t\t" << numberOfPhysicalDevices << endl;
 
 	/* Shows some properties and features for each available GPU */
 	for (uint32_t i = 0; i < numberOfPhysicalDevices; i++) {
@@ -1429,11 +1478,11 @@ int pje::startVulkan() {
 	/* Sets pje::context.choosenPhysicalDevice and pje::context.choosenQueueFamily */
 	selectGPU(
 		pje::context.physicalDevices,
-		pje::context.preferredPhysicalDeviceType,
-		pje::context.neededFamilyQueueAttributes,
-		pje::context.neededSurfaceImages,
-		pje::context.outputFormat,
-		pje::context.neededPresentationMode
+		pje::config::preferredPhysicalDeviceType,
+		vector<VkQueueFlagBits>(pje::config::neededFamilyQueueAttributes.begin(), pje::config::neededFamilyQueueAttributes.end()),					//pje::config::neededFamilyQueueAttributes,
+		pje::config::neededSurfaceImages,
+		pje::config::outputFormat,
+		pje::config::neededPresentationMode
 	);
 
 	array<float, 1> queuePriorities { 1.0f };

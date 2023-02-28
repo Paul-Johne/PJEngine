@@ -21,12 +21,14 @@ std::vector<uint32_t> pje::debugIndices = {
 };
 
 std::vector<pje::PJMesh> pje::debugMesh = {
-	pje::PJMesh(pje::debugVertices, pje::debugIndices, 0)
+	pje::PJMesh(pje::debugVertices, pje::debugIndices, 0, 0)
 };
 
-std::vector<pje::PJModel> pje::loadedModels{};
+std::vector<pje::PJModel> pje::loadedModels = {};
 
 pje::PJBuffer pje::stagingBuffer = {};
+
+/* one PJModel with all its PJMeshes */
 pje::PJBuffer pje::vertexBuffer = {};
 pje::PJBuffer pje::indexBuffer = {};
 
