@@ -8,13 +8,16 @@
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 
+#define DEFAULT_ASSIMP_FLAGS aiProcess_Triangulate | aiProcess_JoinIdenticalVertices
+#define INTERNET_ASSIMP_FLAGS aiProcess_Triangulate | aiProcess_SortByPType | aiProcess_GenUVCoords | aiProcess_OptimizeMeshes | aiProcess_ValidateDataStructure | aiProcess_GenNormals | aiProcess_CalcTangentSpace | aiProcess_LimitBoneWeights | aiProcess_JoinIdenticalVertices | aiProcess_FlipWindingOrder
+
 pje::ModelLoader::ModelLoader() : m_models(), m_modelPaths(), m_activeModels(0), m_centerModel(true), m_folderForModels("assets/models") {
 	for (const auto& each : std::filesystem::directory_iterator(m_folderForModels)) {
 		auto path = each.path().string();
 
 		if (path.find(".fbx") != std::string::npos || path.find(".obj") != std::string::npos) {
 			std::cout << "[DEBUG] 3D object found at: " << path << std::endl;
-			m_models.push_back(loadModel(path, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices, m_centerModel));
+			m_models.push_back(loadModel(path, DEFAULT_ASSIMP_FLAGS, m_centerModel));
 		}
 	}
 }
@@ -49,15 +52,15 @@ pje::PJModel pje::ModelLoader::loadModel(const std::string& filename, unsigned i
 	recurseNodes(pScene->mRootNode, pScene, isFbx, offsetVertices, offsetIndices);
 
 	PJModel temp_PJModel{};
-	temp_PJModel.meshes.insert(temp_PJModel.meshes.end(), m_meshesOfCurrentModel.begin(), m_meshesOfCurrentModel.end());
-	temp_PJModel.modelPath = filename;
-	temp_PJModel.centered = centerModel;
+	temp_PJModel.m_meshes.insert(temp_PJModel.m_meshes.end(), m_meshesOfCurrentModel.begin(), m_meshesOfCurrentModel.end());
+	temp_PJModel.m_modelPath = filename;
+	temp_PJModel.m_centered = centerModel;
 
 	if (centerModel) {
 		glm::vec3 avgPos{ 0.0f, 0.0f, 0.0f };
 		size_t vertexCount = 0;
 
-		for (const auto& mesh : temp_PJModel.meshes) {
+		for (const auto& mesh : temp_PJModel.m_meshes) {
 			vertexCount += mesh.m_vertices.size();
 
 			for (const auto& v : mesh.m_vertices) {
@@ -67,7 +70,7 @@ pje::PJModel pje::ModelLoader::loadModel(const std::string& filename, unsigned i
 
 		avgPos /= vertexCount;
 
-		for (auto& mesh : temp_PJModel.meshes) {
+		for (auto& mesh : temp_PJModel.m_meshes) {
 			std::for_each(
 				std::execution::par_unseq,
 				mesh.m_vertices.begin(),
@@ -82,7 +85,7 @@ pje::PJModel pje::ModelLoader::loadModel(const std::string& filename, unsigned i
 	/* Loads embedded textures from fbx File */
 	if (isFbx) {
 		std::cout << "[DEBUG] \tLoading embedded textures from: " << filename << std::endl;
-		temp_PJModel.textures = loadTextureFromFBX(pScene);
+		loadTextureFromFBX(temp_PJModel, pScene);
 	}
 
 	/* Preparation for next call of loadModel */
@@ -128,24 +131,13 @@ pje::PJMesh pje::ModelLoader::convertMesh(aiMesh* mesh, const aiScene* pScene, b
 	// Copy VBO
 	if (mesh->HasNormals()) {
 		for (uint32_t i = 0; i < mesh->mNumVertices; i++) {
-			if (isFbx) {
-				PJVertex currentVertex(
-					{ mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z },	// glm::vec3 m_position
-					{ 1.0f, 1.0f, 0.0f },													// glm::vec3 m_color	
-					{ mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z }		// glm::vec3 m_normal
-				);
+			PJVertex currentVertex(
+				{ mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z },	// glm::vec3 m_position
+				{ 1.0f, 1.0f, 0.0f },													// glm::vec3 m_color	
+				{ mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z }		// glm::vec3 m_normal
+			);
 
-				vertices.push_back(currentVertex);
-			}
-			else {
-				PJVertex currentVertex(
-					{ mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z },	// glm::vec3 m_position
-					{ 1.0f, 1.0f, 0.0f },													// glm::vec3 m_color	
-					{ mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z }		// glm::vec3 m_normal
-				);
-
-				vertices.push_back(currentVertex);
-			}
+			vertices.push_back(currentVertex);
 		}
 	}
 	else {
@@ -163,6 +155,7 @@ pje::PJMesh pje::ModelLoader::convertMesh(aiMesh* mesh, const aiScene* pScene, b
 		}
 	);
 
+	// Rescale each vertex in parallel
 	if (isFbx) {
 		std::for_each(
 			std::execution::par_unseq,
@@ -189,9 +182,7 @@ pje::PJMesh pje::ModelLoader::convertMesh(aiMesh* mesh, const aiScene* pScene, b
 	return PJMesh(vertices, indices, offsetVertices - vertices.size(), offsetIndices - indices.size());
 }
 
-std::vector<const aiTexture*> pje::ModelLoader::loadTextureFromFBX(const aiScene* pScene) {
-	std::vector<const aiTexture*> modelTextures;
-
+void pje::ModelLoader::loadTextureFromFBX(pje::PJModel& fbx, const aiScene* pScene) {
 	std::cout << "[DEBUG] \tEmbedded Textures : " << pScene->mNumTextures << " | " << " Embedded Materials : " << pScene->mNumMaterials << std::endl;
 
 	if (pScene->HasMaterials()) {
@@ -212,7 +203,9 @@ std::vector<const aiTexture*> pje::ModelLoader::loadTextureFromFBX(const aiScene
 				if (currentMaterial->Get(AI_MATKEY_TEXTURE(aiTextureType::aiTextureType_DIFFUSE, 0), currentTexturePath) != AI_FAILURE) {
 					const aiTexture* texture = pScene->GetEmbeddedTexture(currentTexturePath.C_Str());
 					std::cout << "[DEBUG] \tCurrent aiTexture\t Width : " << texture->mWidth << " | " << " Height : " << texture->mHeight << std::endl;
-					modelTextures.push_back(texture);
+
+					fbx.m_textureInfos.push_back(pje::TextureInfo());
+					fbx.prepareTexture(texture, i);
 				}
 			}
 			else {
@@ -221,5 +214,5 @@ std::vector<const aiTexture*> pje::ModelLoader::loadTextureFromFBX(const aiScene
 		}
 	}
 
-	return modelTextures;
+	return;
 }

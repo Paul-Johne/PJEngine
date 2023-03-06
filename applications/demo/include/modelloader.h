@@ -31,6 +31,6 @@ namespace pje {
 		void recurseNodes(aiNode* node, const aiScene* pScene, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices, glm::mat4 accTransform = glm::mat4(1.0f));
 		PJMesh convertMesh(aiMesh* mesh, const aiScene* pScene, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices, const glm::mat4& accTransform);
 
-		std::vector<const aiTexture*> loadTextureFromFBX(const aiScene* pScene);
+		void pje::ModelLoader::loadTextureFromFBX(pje::PJModel& fbx, const aiScene* pScene);
 	};
 }

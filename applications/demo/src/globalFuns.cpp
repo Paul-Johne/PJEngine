@@ -82,7 +82,9 @@ uint32_t getMemoryTypeIndex(uint32_t memoryTypeBits, VkMemoryPropertyFlags flags
 	throw runtime_error("Error at getMemoryTypeIndex");
 }
 
-/* Returns a VkBuffer Handle withpout VkMemory */
+// ##### //
+
+/* Returns a VkBuffer Handle without VkMemory */
 VkBuffer createVkBuffer(VkDeviceSize size, VkBufferUsageFlags usageFlags, const char* debugName = nullptr) {
 	VkBuffer buffer = VK_NULL_HANDLE;
 	
@@ -112,7 +114,7 @@ VkBuffer createVkBuffer(VkDeviceSize size, VkBufferUsageFlags usageFlags, const 
 	return buffer;
 }
 
-/* Creates VkMemory for a given VkBuffer */
+/* Allocates VkMemory for a given VkBuffer */
 VkDeviceMemory allocateVkBufferMemory(VkBuffer buffer, VkMemoryPropertyFlags memoryFlags) {
 	VkDeviceMemory memory = VK_NULL_HANDLE;
 
@@ -219,48 +221,33 @@ void copyToLocalDeviceBuffer(const void* data, VkDeviceSize dataSize, VkBuffer d
 	/* Submission of VkCommandBuffer onto VkQueue */
 	vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, pje::context.fenceCopiedBuffer);
 
+	/* Waits until CommandBuffers were submitted */
 	vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer, VK_TRUE, numeric_limits<uint64_t>::max());
 	vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer);
 }
 
 /* Sends data on RAM as PJBuffer to [VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT]-VRAM */
-template <typename T>
-void sendDataToVRAM(pje::PJBuffer& localDeviceBuffer, vector<T> objectTarget, VkBufferUsageFlags vertexOrIndexFlag, const char* debugName = nullptr) {
-	VkDeviceSize objectByteSize = sizeof(T) * objectTarget.size();
-
-	createPJBuffer(
-		localDeviceBuffer,
-		objectByteSize,
-		VK_BUFFER_USAGE_TRANSFER_DST_BIT | vertexOrIndexFlag,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		debugName
-	);
-
-	// HOST_COHERENT buffer -> DEVICE_LOCAL buffer
-	copyToLocalDeviceBuffer(objectTarget.data(), objectByteSize, localDeviceBuffer.buffer);
-}
-
-void sendPJModelToVRAM(pje::PJBuffer& vertexBuffer, pje::PJBuffer& indexBuffer, const pje::PJModel& objectTarget) {
+void sendPJModelToVRAM(pje::PJBuffer& rawVertexBuffer, pje::PJBuffer& rawIndexBuffer, const pje::PJModel& objectTarget) {
 	VkDeviceSize vertexBufferSize = 0;
 	VkDeviceSize indexBufferSize = 0;
 
-	for (const auto& mesh : objectTarget.meshes) {
+	for (const auto& mesh : objectTarget.m_meshes) {
 		vertexBufferSize += (sizeof(pje::PJMesh::vertexType) * mesh.m_vertices.size());
 		indexBufferSize += (sizeof(pje::PJMesh::indexType) * mesh.m_indices.size());
 	}
 
 	createPJBuffer(
-		vertexBuffer,
+		rawVertexBuffer,
 		vertexBufferSize,
-		VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,	// used as destination of transfer command
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		"vertexBuffer"
 	);
 
 	createPJBuffer(
-		indexBuffer,
+		rawIndexBuffer,
 		indexBufferSize,
-		VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+		VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,	// used as destination of transfer command
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		"indexBuffer"
 	);
@@ -268,20 +255,20 @@ void sendPJModelToVRAM(pje::PJBuffer& vertexBuffer, pje::PJBuffer& indexBuffer, 
 	VkDeviceSize vByteOffset(0);
 	VkDeviceSize iByteOffset(0);
 
-	for (const auto& mesh : objectTarget.meshes) {
+	for (const auto& mesh : objectTarget.m_meshes) {
 		VkDeviceSize vByteSize(sizeof(pje::PJMesh::vertexType) * mesh.m_vertices.size());
 		VkDeviceSize iByteSize(sizeof(pje::PJMesh::indexType) * mesh.m_indices.size());
 
 		copyToLocalDeviceBuffer(
 			mesh.m_vertices.data(),
 			vByteSize,
-			vertexBuffer.buffer,
+			rawVertexBuffer.buffer,
 			vByteOffset
 		);
 		copyToLocalDeviceBuffer(
 			mesh.m_indices.data(),
 			iByteSize,
-			indexBuffer.buffer,
+			rawIndexBuffer.buffer,
 			iByteOffset
 		);
 
@@ -289,6 +276,33 @@ void sendPJModelToVRAM(pje::PJBuffer& vertexBuffer, pje::PJBuffer& indexBuffer, 
 		iByteOffset += iByteSize;
 	}
 }
+
+// ##### //
+
+///* TODO :: Returns a VkImage Handle without VkMemory */
+//VkImage createVkImage(VkExtent3D imageSize) {
+//
+//}
+//
+///* TODO :: Allocates VkMemory for a given VkImage */
+//VkDeviceMemory allocateVkImageMemory() {
+//
+//}
+//
+///* TODO :: Creates and binds VkImage and VkMemory of some pje::PJImage */
+//void createPJImage(pje::PJImage& rawImage) {
+//	rawImage.image = createVkImage();
+//}
+//
+///* TODO :: Maintains pje::stagingBuffer and writes void* data into local device VkImage dst */
+//void copyToLocalDeviceImage() {
+//
+//}
+//
+///* TODO :: Sends data on RAM as PJImage to [VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT]-VRAM */
+//void sendPJImageToVRAM(pje::PJImage& rawImageBuffer, const pje::PJModel& objectTarget, size_t indexOfPJModelTexture) {
+//
+//}
 
 // ################################################################################################################################################################## //
 
@@ -426,32 +440,31 @@ void createDepthAndMSAA(VkExtent3D imageSize) {
 	msaaImageInfo.pQueueFamilyIndices = nullptr;
 	msaaImageInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
 
-	pje::context.msaaImage = make_unique<VkImage>();
-	vkCreateImage(pje::context.logicalDevice, &msaaImageInfo, nullptr, pje::context.msaaImage.get());
+	vkCreateImage(pje::context.logicalDevice, &msaaImageInfo, nullptr, &pje::rtMsaa.image);
 
 	VkMemoryRequirements memReq;
 	VkMemoryAllocateInfo memAllocInfo;
 
 	/* Considers VK_SAMPLE_COUNT_4_BIT for memReq.size */
-	vkGetImageMemoryRequirements(pje::context.logicalDevice, *pje::context.msaaImage, &memReq);
+	vkGetImageMemoryRequirements(pje::context.logicalDevice, pje::rtMsaa.image, &memReq);
 
 	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	memAllocInfo.pNext = nullptr;
 	memAllocInfo.allocationSize = memReq.size;
 	memAllocInfo.memoryTypeIndex = getMemoryTypeIndex(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-	pje::context.result = vkAllocateMemory(pje::context.logicalDevice, &memAllocInfo, nullptr, &pje::context.msaaImageMemory);
+	pje::context.result = vkAllocateMemory(pje::context.logicalDevice, &memAllocInfo, nullptr, &pje::rtMsaa.deviceMemory);
 	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at createDepthRenderTarget::vkAllocateMemory" << endl;
 		throw runtime_error("Error at createDepthRenderTarget::vkAllocateMemory");
 	}
-	vkBindImageMemory(pje::context.logicalDevice, *pje::context.msaaImage, pje::context.msaaImageMemory, 0);
+	vkBindImageMemory(pje::context.logicalDevice, pje::rtMsaa.image, pje::rtMsaa.deviceMemory, 0);
 
 	VkImageViewCreateInfo msaaImageViewInfo;
 	msaaImageViewInfo.sType = VkStructureType::VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	msaaImageViewInfo.pNext = nullptr;
 	msaaImageViewInfo.flags = 0;
-	msaaImageViewInfo.image = *pje::context.msaaImage;
+	msaaImageViewInfo.image = pje::rtMsaa.image;
 	msaaImageViewInfo.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
 	msaaImageViewInfo.format = pje::config::outputFormat;
 	msaaImageViewInfo.components = VkComponentMapping{
@@ -465,8 +478,7 @@ void createDepthAndMSAA(VkExtent3D imageSize) {
 		1								// -||-
 	};
 
-	pje::context.msaaImageView = make_unique<VkImageView>();
-	pje::context.result = vkCreateImageView(pje::context.logicalDevice, &msaaImageViewInfo, nullptr, pje::context.msaaImageView.get());
+	pje::context.result = vkCreateImageView(pje::context.logicalDevice, &msaaImageViewInfo, nullptr, &pje::rtMsaa.imageView);
 	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at createRenderTarget::vkCreateImageView" << endl;
 		throw runtime_error("Error at createRenderTarget::vkCreateImageView");
@@ -490,29 +502,28 @@ void createDepthAndMSAA(VkExtent3D imageSize) {
 	depthImageInfo.pQueueFamilyIndices = nullptr;
 	depthImageInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
 
-	pje::context.depthImage = make_unique<VkImage>();
-	vkCreateImage(pje::context.logicalDevice, &depthImageInfo, nullptr, pje::context.depthImage.get());
+	vkCreateImage(pje::context.logicalDevice, &depthImageInfo, nullptr, &pje::rtDepth.image);
 
 	/* creating VkMemory without vmaFunctions - TEMPORARY */
-	vkGetImageMemoryRequirements(pje::context.logicalDevice, *pje::context.depthImage, &memReq);
+	vkGetImageMemoryRequirements(pje::context.logicalDevice, pje::rtDepth.image, &memReq);
 
 	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	memAllocInfo.pNext = nullptr;
 	memAllocInfo.allocationSize = memReq.size;
 	memAllocInfo.memoryTypeIndex = getMemoryTypeIndex(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-	pje::context.result = vkAllocateMemory(pje::context.logicalDevice, &memAllocInfo, nullptr, &pje::context.depthImageMemory);
+	pje::context.result = vkAllocateMemory(pje::context.logicalDevice, &memAllocInfo, nullptr, &pje::rtDepth.deviceMemory);
 	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at createRenderTarget::vkAllocateMemory" << endl;
 		throw runtime_error("Error at createRenderTarget::vkAllocateMemory");
 	}
-	vkBindImageMemory(pje::context.logicalDevice, *pje::context.depthImage, pje::context.depthImageMemory, 0);
+	vkBindImageMemory(pje::context.logicalDevice, pje::rtDepth.image, pje::rtDepth.deviceMemory, 0);
 
 	VkImageViewCreateInfo depthImageViewInfo;
 	depthImageViewInfo.sType = VkStructureType::VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	depthImageViewInfo.pNext = nullptr;
 	depthImageViewInfo.flags = 0;
-	depthImageViewInfo.image = *pje::context.depthImage;
+	depthImageViewInfo.image = pje::rtDepth.image;
 	depthImageViewInfo.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
 	depthImageViewInfo.format = pje::config::depthFormat;
 	depthImageViewInfo.components = VkComponentMapping{
@@ -526,8 +537,7 @@ void createDepthAndMSAA(VkExtent3D imageSize) {
 		1								// -||-
 	};
 
-	pje::context.depthImageView = make_unique<VkImageView>();
-	pje::context.result = vkCreateImageView(pje::context.logicalDevice, &depthImageViewInfo, nullptr, pje::context.depthImageView.get());
+	pje::context.result = vkCreateImageView(pje::context.logicalDevice, &depthImageViewInfo, nullptr, &pje::rtDepth.imageView);
 	if (pje::context.result != VK_SUCCESS) {
 		cout << "Error at createRenderTarget::vkCreateImageView" << endl;
 		throw runtime_error("Error at createRenderTarget::vkCreateImageView");
@@ -544,12 +554,12 @@ void pje::cleanupRealtimeRendering(bool reset) {
 	}
 
 	/* I definitely need vma.. */
-	vkDestroyImageView(pje::context.logicalDevice, *pje::context.depthImageView, nullptr);
-	vkFreeMemory(pje::context.logicalDevice, pje::context.depthImageMemory, nullptr);
-	vkDestroyImage(pje::context.logicalDevice, *pje::context.depthImage, nullptr);
-	vkDestroyImageView(pje::context.logicalDevice, *pje::context.msaaImageView, nullptr);
-	vkFreeMemory(pje::context.logicalDevice, pje::context.msaaImageMemory, nullptr);
-	vkDestroyImage(pje::context.logicalDevice, *pje::context.msaaImage, nullptr);
+	vkDestroyImageView(pje::context.logicalDevice, pje::rtDepth.imageView, nullptr);
+	vkFreeMemory(pje::context.logicalDevice, pje::rtDepth.deviceMemory, nullptr);
+	vkDestroyImage(pje::context.logicalDevice, pje::rtDepth.image, nullptr);
+	vkDestroyImageView(pje::context.logicalDevice, pje::rtMsaa.imageView, nullptr);
+	vkFreeMemory(pje::context.logicalDevice, pje::rtMsaa.deviceMemory, nullptr);
+	vkDestroyImage(pje::context.logicalDevice, pje::rtMsaa.image, nullptr);
 
 	/* should ONLY be used by stopVulkan() */
 	if (!reset) {
@@ -654,7 +664,7 @@ void recordRenderCommands(pje::PJModel& renderable, uint32_t numberOfCommandBuff
 		vkCmdBindIndexBuffer(pje::context.commandBuffers[i], pje::indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
 		// DRAW => drawing on swapchain images
-		for (const auto& mesh : renderable.meshes) {
+		for (const auto& mesh : renderable.m_meshes) {
 			vkCmdDrawIndexed(pje::context.commandBuffers[i], mesh.m_indices.size(), 1, mesh.m_offsetIndices, mesh.m_offsetVertices, 0);
 		}
 
@@ -678,11 +688,11 @@ void setupRealtimeRendering(bool reset = false) {
 	swapchainInfo.flags = 0;
 	swapchainInfo.surface = pje::context.surface;
 	swapchainInfo.minImageCount = pje::config::neededSurfaceImages;					// requires AT LEAST 2 (double buffering)
-	swapchainInfo.imageFormat = pje::config::outputFormat;							// TODO ( choose dynamically )
-	swapchainInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;				// TODO ( choose dynamically )
+	swapchainInfo.imageFormat = pje::config::outputFormat;							// VkFormat of rendertargets in swapchain
+	swapchainInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;				// specifies supported color space of presentation (surface)
 	swapchainInfo.imageExtent = VkExtent2D{ pje::context.windowWidth, pje::context.windowHeight };
 	swapchainInfo.imageArrayLayers = 1;
-	swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;					// TODO ( an additional flag might be necessary )
+	swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;					// suitable for a resolve attachment in VkFramebuffer
 	swapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;						// exclusiv to single queue family at a time
 	swapchainInfo.queueFamilyIndexCount = 0;										// enables access across multiple queue families => .imageSharingMode = VK_SHARING_MODE_CONCURRENT
 	swapchainInfo.pQueueFamilyIndices = nullptr;
@@ -711,13 +721,12 @@ void setupRealtimeRendering(bool reset = false) {
 		throw runtime_error("Error at vkGetSwapchainImagesKHR");
 	}
 	
-	/* ImageViewInfo for building ImageView ! TODO ! */
 	VkImageViewCreateInfo imageViewInfo;
 	imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	imageViewInfo.pNext = nullptr;
 	imageViewInfo.flags = 0;
 	imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	imageViewInfo.format = pje::config::outputFormat;			// TODO ( choose dynamically )
+	imageViewInfo.format = pje::config::outputFormat;
 	imageViewInfo.components = VkComponentMapping{
 		VK_COMPONENT_SWIZZLE_IDENTITY	// properties r,g,b,a stay as their identity 
 	};
@@ -762,6 +771,7 @@ void setupRealtimeRendering(bool reset = false) {
 	if (!reset) {
 		/* RENDERPASS - START */
 
+		// VkAttachmentDescription is held by renderPass for its subpasses (VkAttachmentReference.attachment uses VkAttachmentDescription)
 		VkAttachmentDescription attachmentDescriptionMSAA;
 		attachmentDescriptionMSAA.flags = 0;
 		attachmentDescriptionMSAA.format = pje::config::outputFormat;
@@ -784,7 +794,6 @@ void setupRealtimeRendering(bool reset = false) {
 		attachmentDescriptionDepth.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 		attachmentDescriptionDepth.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-		// VkAttachmentDescription is held by renderPass for its subpasses (VkAttachmentReference.attachment uses VkAttachmentDescription)
 		VkAttachmentDescription attachmentDescriptionResolve;
 		attachmentDescriptionResolve.flags = 0;
 		attachmentDescriptionResolve.format = pje::config::outputFormat;					// has the same format as the swapchainInfo.imageFormat
@@ -796,30 +805,31 @@ void setupRealtimeRendering(bool reset = false) {
 		attachmentDescriptionResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;				// buffer as input
 		attachmentDescriptionResolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;			// buffer as output
 
+		// References are hold by some VkSubpass to reference certain VkAttachmentDescription
 		VkAttachmentReference attachmentRefMSAA;
-		attachmentRefMSAA.attachment = 0;
+		attachmentRefMSAA.attachment = 0;													// index into VkRenderPassCreateInfo.pAttachments
 		attachmentRefMSAA.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 		VkAttachmentReference attachmentRefDepth;
-		attachmentRefDepth.attachment = 1;
+		attachmentRefDepth.attachment = 1;													// index into VkRenderPassCreateInfo.pAttachments
 		attachmentRefDepth.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
 		VkAttachmentReference attachmentRefResolve;
-		attachmentRefResolve.attachment = 2;										// index of attachment description
-		attachmentRefResolve.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;		// CONVERTING: desc.initialLayout -> ref.layout -> desc.finalLayout
+		attachmentRefResolve.attachment = 2;												// index into VkRenderPassCreateInfo.pAttachments
+		attachmentRefResolve.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;				// CONVERTING: initialLayout -> layout -> finalLayout
 
-		// each render pass holds 1+ sub render passes | equals one run through pipeline
+		// each VkRenderPass holds 1+ VkSubpasses | VkSubpass equals one run through pipeline
 		VkSubpassDescription subpassDescription;
 		subpassDescription.flags = 0;
-		subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;	// what kind of computation will be done
-		subpassDescription.inputAttachmentCount = 0;
-		subpassDescription.pInputAttachments = nullptr;							// actual vertices that being used for shader computation
+		subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;				// what kind of computation will be done
 		subpassDescription.colorAttachmentCount = 1;
-		subpassDescription.pColorAttachments = &attachmentRefMSAA;				// which VkAttachmentDescription (attribute bundle) of Renderpass will be used
-		subpassDescription.pResolveAttachments = &attachmentRefResolve;			// -||-
-		subpassDescription.pDepthStencilAttachment = &attachmentRefDepth;		// -||-
+		subpassDescription.pColorAttachments = &attachmentRefMSAA;							// which VkAttachmentDescription (attribute bundle) of Renderpass will be used
+		subpassDescription.pDepthStencilAttachment = &attachmentRefDepth;					// -||-
+		subpassDescription.pResolveAttachments = &attachmentRefResolve;						// -||-
 		subpassDescription.preserveAttachmentCount = 0;
 		subpassDescription.pPreserveAttachments = nullptr;
+		subpassDescription.inputAttachmentCount = 0;
+		subpassDescription.pInputAttachments = nullptr;										// actual vertices that being used for shader computation
 
 		// VkSubpassDependency can be seen as a semaphore between subpasses for their micro tasks
 		VkSubpassDependency subpassDependency;
@@ -854,7 +864,7 @@ void setupRealtimeRendering(bool reset = false) {
 		renderPassInfo.pNext = nullptr;
 		renderPassInfo.flags = 0;
 		renderPassInfo.attachmentCount = 3;
-		renderPassInfo.pAttachments = attachmentDescriptions.data();			// for subpassDescription's VkAttachmentReference(s)
+		renderPassInfo.pAttachments = attachmentDescriptions.data();			// all VkAttachmentDescription(s) for subpassDescription's VkAttachmentReference(s)
 		renderPassInfo.subpassCount = 1;
 		renderPassInfo.pSubpasses = &subpassDescription;						// all subpasses of the current render pass
 		renderPassInfo.dependencyCount = 2;
@@ -1078,13 +1088,13 @@ void setupRealtimeRendering(bool reset = false) {
 
 	for (uint32_t i = 0; i < pje::context.numberOfImagesInSwapchain; i++) {
 		array<VkImageView, 3> rendertargets{
-			*pje::context.msaaImageView,
-			*pje::context.depthImageView,
+			pje::rtMsaa.imageView,
+			pje::rtDepth.imageView,
 			pje::context.swapchainImageViews[i]
 		};
 
-		// VkAttachmentDescription of VkRenderPass describes rendertargets
-		framebufferInfo.pAttachments = rendertargets.data();	// imageView => reference to image in swapchain
+		// VkAttachmentDescription of VkRenderPass describes rendertargets => ORDER IS VERY IMPORTART IN .data() !
+		framebufferInfo.pAttachments = rendertargets.data();
 
 		pje::context.result = vkCreateFramebuffer(pje::context.logicalDevice, &framebufferInfo, nullptr, &pje::context.swapchainFramebuffers[i]);
 		if (pje::context.result != VK_SUCCESS) {
@@ -1128,6 +1138,8 @@ void resetRealtimeRendering(GLFWwindow* window, int width, int height) {
 		pje::context.surface,
 		&capabilities
 	);
+
+	/* Prevents out of bounds size */
 	if (width > capabilities.maxImageExtent.width)
 		width = capabilities.maxImageExtent.width;
 	if (height > capabilities.maxImageExtent.height)
@@ -1193,26 +1205,30 @@ void selectGPU(const vector<VkPhysicalDevice> physicalDevices, VkPhysicalDeviceT
 		throw runtime_error("[ERROR] No GPU was found on this computer.");
 	
 	const uint8_t AMOUNT_OF_REQUIREMENTS = 5;
+	uint8_t requirementCounter = 0;
+	uint32_t devicesCounter = 0;
 
 	for (const auto& physicalDevice : physicalDevices) {
-		uint8_t requirementCounter = 0;
+		requirementCounter = 0;
 
 		VkPhysicalDeviceProperties props;
 		vkGetPhysicalDeviceProperties(physicalDevice, &props);
 
 		cout << "\n[PJE] GPU [" << props.deviceName << "] was found." << endl;
 		if (props.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-			cout << "[PJE] GPU is VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU." << endl;
+			cout << "[PJE] \tGPU is VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU." << endl;
 		if (props.deviceType == VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)
-			cout << "[PJE] GPU is VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU." << endl;
+			cout << "[PJE] \tGPU is VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU." << endl;
 
 		if (props.deviceType == preferredType) {
 			++requirementCounter;
-			cout << "[PJE] Preferred device type was found." << endl;
+			cout << "[PJE] \tPreferred device type was found." << endl;
 		}
 		else {
-			cout << "\t[PJE] Preferred device type wasn't found." << endl;
-			break;
+			cout << "[PJE] \tPreferred device type wasn't found." << endl;
+			cout << "[PJE] \tPJEngine declined " << props.deviceName << ".\n" << endl;
+			++devicesCounter;
+			continue;
 		}
 
 		{
@@ -1241,26 +1257,30 @@ void selectGPU(const vector<VkPhysicalDevice> physicalDevices, VkPhysicalDeviceT
 			}
 
 			if (!foundQueueFamily) {
-				cout << "\t[PJE] No suitable queue family was found." << endl;
-				break;
+				cout << "[PJE] \tNo suitable queue family was found." << endl;
+				cout << "[PJE] \tPJEngine declined " << props.deviceName << ".\n" << endl;
+				++devicesCounter;
+				continue;
 			}
 			else {
 				++requirementCounter;
-				cout << "[PJE] pje::context.choosenQueueFamily was set to : " << pje::context.choosenQueueFamily << endl;
+				cout << "[PJE] \tpje::context.choosenQueueFamily was set to : " << pje::context.choosenQueueFamily << endl;
 			}
 		}
 
+		VkSurfaceCapabilitiesKHR surfaceCapabilities;
 		{
-			VkSurfaceCapabilitiesKHR surfaceCapabilities;
 			vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, pje::context.surface, &surfaceCapabilities);
 
 			if (surfaceCapabilities.minImageCount >= neededSurfaceImages) {
 				++requirementCounter;
-				cout << "[PJE] Physical device supports needed amount of surface images" << endl;
+				cout << "[PJE] \tPhysical device supports needed amount of surface images" << endl;
 			}
 			else {
-				cout << "\t[PJE] Physical device cannot provide the needed amount of surface images" << endl;
-				break;
+				cout << "[PJE] \tPhysical device cannot provide the needed amount of surface images" << endl;
+				cout << "[PJE] \tPJEngine declined " << props.deviceName << ".\n" << endl;
+				++devicesCounter;
+				continue;
 			}
 		}
 
@@ -1280,12 +1300,14 @@ void selectGPU(const vector<VkPhysicalDevice> physicalDevices, VkPhysicalDeviceT
 			}
 
 			if (!foundVkFormat) {
-				cout << "\t[PJE] Required VkFormat wasn't provided by the physical device" << endl;
-				break;
+				cout << "[PJE] \tRequired VkFormat wasn't provided by the physical device" << endl;
+				cout << "[PJE] \tPJEngine declined " << props.deviceName << ".\n" << endl;
+				++devicesCounter;
+				continue;
 			}
 			else {
 				++requirementCounter;
-				cout << "[PJE] Physical device supports required VkFormat" << endl;
+				cout << "[PJE] \tPhysical device supports required VkFormat" << endl;
 			}
 		}
 
@@ -1300,28 +1322,34 @@ void selectGPU(const vector<VkPhysicalDevice> physicalDevices, VkPhysicalDeviceT
 			for (uint32_t i = 0; i < numberOfPresentationModes; i++) {
 				if (presentModes[i] == neededPresentationMode) {
 					foundPresentMode = true;
-					
 					break;
 				}
 			}
 
 			if (!foundPresentMode) {
-				cout << "\t[PJE] Required VkPresentModeKHR wasn't provided by the physical device" << endl;
-				break;
+				cout << "[PJE] \tRequired VkPresentModeKHR wasn't provided by the physical device" << endl;
+				cout << "[PJE] \tPJEngine declined " << props.deviceName << ".\n" << endl;
+				++devicesCounter;
+				continue;
 			}
 			else {
 				++requirementCounter;
-				cout << "[PJE] Physical device supports required VkPresentModeKHR" << endl;
+				cout << "[PJE] \tPhysical device supports required VkPresentModeKHR" << endl;
 			}
 		}
 
 		if (requirementCounter == AMOUNT_OF_REQUIREMENTS) {
-			cout << "[PJE] PJEngine is choosing " << props.deviceName << ".\n" << endl;
-			pje::context.choosenPhysicalDevice = 0;
+			cout << "[PJE] \tPJEngine is choosing " << props.deviceName << ".\n" << endl;
+
+			pje::context.choosenPhysicalDevice = devicesCounter;
+			pje::context.windowWidth = surfaceCapabilities.currentExtent.width;
+			pje::context.windowHeight = surfaceCapabilities.currentExtent.height;
+
 			return;
 		}
 		else {
-			cout << "\t[PJE] PJEngine declined " << props.deviceName << ".\n" << endl;
+			cout << "[ERROR] \tPJEngine declined. This part should not be reachable..\n" << endl;
+			++devicesCounter;
 		}
 	}
 
@@ -1463,7 +1491,7 @@ int pje::startVulkan() {
 
 	pje::context.physicalDevices = vector<VkPhysicalDevice>(numberOfPhysicalDevices);
 
-	/*	vkEnumeratePhysicalDevices has two functionalities:
+	/*	vkEnumeratePhysicalDevices has two functionalities (depending on 3rd parameter):
 		2) get reference for a number of GPUs and store them in an array of physical devices */
 	vkEnumeratePhysicalDevices(pje::context.vulkanInstance, &numberOfPhysicalDevices, pje::context.physicalDevices.data());
 
@@ -1479,7 +1507,7 @@ int pje::startVulkan() {
 	selectGPU(
 		pje::context.physicalDevices,
 		pje::config::preferredPhysicalDeviceType,
-		vector<VkQueueFlagBits>(pje::config::neededFamilyQueueAttributes.begin(), pje::config::neededFamilyQueueAttributes.end()),					//pje::config::neededFamilyQueueAttributes,
+		vector<VkQueueFlagBits>(pje::config::neededFamilyQueueAttributes.begin(), pje::config::neededFamilyQueueAttributes.end()),
 		pje::config::neededSurfaceImages,
 		pje::config::outputFormat,
 		pje::config::neededPresentationMode

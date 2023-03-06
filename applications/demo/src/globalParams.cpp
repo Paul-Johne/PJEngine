@@ -1,8 +1,35 @@
 #include <globalParams.h>
 
-void pje::PJModel::prepareTexture() {
+void pje::PJModel::prepareTexture(const aiTexture* compressedRaw, size_t dstIndex, uint8_t desiredChannels, bool newEntry) {
+	int len;
 
+	if (compressedRaw->mHeight == 0 && compressedRaw->mWidth > 0)
+		len = compressedRaw->mWidth;
+	else
+		len = compressedRaw->mWidth * compressedRaw->mHeight;
+
+	unsigned char* pixels = stbi_load_from_memory(
+		reinterpret_cast<unsigned char*>(compressedRaw->pcData),
+		len,
+		&this->m_textureInfos[dstIndex].x_width,								// saves data inside
+		&this->m_textureInfos[dstIndex].y_height,								// saves data inside
+		&this->m_textureInfos[dstIndex].channels,								// saves data inside
+		desiredChannels
+	);
+
+	this->m_textureInfos[dstIndex].size = this->m_textureInfos[dstIndex].x_width * this->m_textureInfos[dstIndex].y_height * desiredChannels;
+	std::vector<unsigned char> res(pixels, pixels + m_textureInfos[dstIndex].size);
+	stbi_image_free(pixels);
+
+	if (newEntry)
+		this->m_uncompressedTextures.push_back(res);
+	else
+		this->m_uncompressedTextures[dstIndex] = res;
+
+	return;
 }
+
+// ##################################################################################################################################################################
 
 pje::Context pje::context = {};
 
@@ -32,12 +59,18 @@ std::vector<pje::PJModel> pje::loadedModels = {};
 
 pje::PJBuffer pje::stagingBuffer = {};
 
-/* one PJModel with all its PJMeshes */
+/* One PJModel with all its PJMeshes */
 pje::PJBuffer pje::vertexBuffer = {};
 pje::PJBuffer pje::indexBuffer = {};
 
+/* Holds matrices for shader computation */
 pje::PJBuffer pje::uniformsBuffer = {};
 
 std::vector<pje::BoneRef> boneRefs = {};
 pje::PJBuffer pje::storeBoneRefs = {};
 pje::PJBuffer pje::storeBoneMatrices = {};
+
+/* Vulkan "Texture Units" */
+pje::PJImage pje::rtAlbedo = {};
+pje::PJImage pje::rtMsaa = {};
+pje::PJImage pje::rtDepth = {};

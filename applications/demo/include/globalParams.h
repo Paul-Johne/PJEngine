@@ -5,14 +5,14 @@
 	#include <vector>
 	#include <array>
 	#include <chrono>
+	#include <iostream>
 
 	#include <vulkan/vulkan.h>
 	#include <GLFW/glfw3.h>
 	#include <glm/glm.hpp>
 	#include <assimp/texture.h>
-	#include <imgui.h>
-
 	#include <stb_image.h>
+	// #include <imgui.h>
 
 	#include <config.h>
 
@@ -39,13 +39,6 @@ namespace pje {
 		uint32_t											numberOfImagesInSwapchain		= 0;
 		std::unique_ptr<VkImageView[]>						swapchainImageViews;
 		std::unique_ptr<VkFramebuffer[]>					swapchainFramebuffers;
-
-		VkDeviceMemory										msaaImageMemory					= VK_NULL_HANDLE;
-		std::unique_ptr<VkImage>							msaaImage;
-		std::unique_ptr<VkImageView>						msaaImageView;
-		VkDeviceMemory										depthImageMemory				= VK_NULL_HANDLE;
-		std::unique_ptr<VkImage>							depthImage;
-		std::unique_ptr<VkImageView>						depthImageView;
 
 		VkShaderModule										shaderModuleBasicVert			= VK_NULL_HANDLE;
 		VkShaderModule										shaderModuleBasicFrag			= VK_NULL_HANDLE;
@@ -170,31 +163,52 @@ namespace pje {
 	};
 	extern std::vector<PJMesh>	debugMesh;
 
+	struct TextureInfo {
+		int				x_width;
+		int				y_height;
+		int				channels;
+
+		/* x_width * y_height * channels */
+		VkDeviceSize	size = 0;
+	};
+
 	/* #### Model #### */
 	class PJModel {
 	public:
-		std::vector<PJMesh>				meshes;
-		std::vector<const aiTexture*>	textures;
-		std::string						modelPath;
-		bool							centered;
+		std::vector<PJMesh>							m_meshes;
+		std::vector<std::vector<unsigned char>>		m_uncompressedTextures;
+		std::vector<TextureInfo>					m_textureInfos;
+		std::string									m_modelPath;
+		bool										m_centered;
 
-		void prepareTexture();
+		/* Expects 8Bits per channel */
+		void pje::PJModel::prepareTexture(const aiTexture* compressedRaw, size_t dstIndex, uint8_t desiredChannels = STBI_rgb_alpha, bool newEntry = true);
 	};
-	extern std::vector<pje::PJModel>	loadedModels;
+	extern std::vector<pje::PJModel> loadedModels;
 
 	/* #### PJBUFFER #### */
 	struct PJBuffer {
 		VkBuffer				buffer;
 		VkDeviceSize			size;
-
 		VkDeviceMemory			deviceMemory;
 		VkMemoryPropertyFlags	flags;
 	};
 	extern PJBuffer stagingBuffer;
+	
 	extern PJBuffer vertexBuffer;
 	extern PJBuffer indexBuffer;
-
 	extern PJBuffer uniformsBuffer;
+
 	extern PJBuffer storeBoneRefs;
 	extern PJBuffer storeBoneMatrices;
+
+	/* #### PJIMAGE #### */
+	struct PJImage {
+		VkImage			image			= VK_NULL_HANDLE;
+		VkDeviceMemory	deviceMemory	= VK_NULL_HANDLE;
+		VkImageView		imageView		= VK_NULL_HANDLE;
+	};
+	extern PJImage rtAlbedo;
+	extern PJImage rtMsaa;
+	extern PJImage rtDepth;
 }

@@ -15,7 +15,7 @@
 **	get_object_type				=> verify the VKObjectType for set_object_name
 */
 namespace pje {
-	void debugPhysicalDeviceStats(VkPhysicalDevice& device);
+	void debugPhysicalDeviceStats(const VkPhysicalDevice& physicalDevice);
 
 	template <typename T>
 	constexpr VkObjectType get_object_type(T handle = VK_NULL_HANDLE);
@@ -26,13 +26,13 @@ namespace pje {
 
 // ################################################################################################################################################################## //
 
-inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& physicalDevice) {
+inline void pje::debugPhysicalDeviceStats(const VkPhysicalDevice& physicalDevice) {
 	VkPhysicalDeviceProperties properties;
 	vkGetPhysicalDeviceProperties(physicalDevice, &properties);
 
 	uint32_t apiVersion = properties.apiVersion;
 
-	std::cout << "[PJE] Available GPU:\t\t" << properties.deviceName << std::endl;
+	std::cout << "\n[PJE] Available GPU:\t\t" << properties.deviceName << std::endl;
 	std::cout << "\t\t\t\tVulkan API Version:\t" << VK_VERSION_MAJOR(apiVersion) << "." << VK_VERSION_MINOR(apiVersion) << "." << VK_VERSION_PATCH(apiVersion) << std::endl;
 	std::cout << "\t\t\t\tDevice Type:\t\t" << properties.deviceType << std::endl;
 
@@ -89,9 +89,10 @@ inline void pje::debugPhysicalDeviceStats(VkPhysicalDevice& physicalDevice) {
 	auto surfaceFormats = std::vector<VkSurfaceFormatKHR>(numberOfFormats);
 	vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, pje::context.surface, &numberOfFormats, surfaceFormats.data());
 
-	std::cout << "\t\t\t\tVkFormats: " << std::endl;
+	std::cout << "\t\t\t\tSurface VkFormats: " << std::endl;
 	for (uint32_t i = 0; i < numberOfFormats; i++) {
-		std::cout << "\t\t\t\t\tIndex:\t\t" << surfaceFormats[i].format << std::endl;
+		std::cout << "\t\t\t\t\tFormat     " << i << ":\t\t" << surfaceFormats[i].format << std::endl;
+		std::cout << "\t\t\t\t\tColorspace " << i << ":\t\t" << surfaceFormats[i].colorSpace << std::endl;
 	}
 
 	/* PresentationMode => how CPU and GPU may interact with swapchain images */

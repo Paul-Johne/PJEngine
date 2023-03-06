@@ -1,7 +1,5 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.14)
 
-#project(demo)
-
 set(DEMO_SOURCES 
     "${CMAKE_CURRENT_SOURCE_DIR}/include/app.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/config.h"
@@ -80,25 +78,29 @@ add_dependencies(demo demo_shaders)
 add_custom_command(
     TARGET demo
     POST_BUILD
-    #COMMAND ${CMAKE_COMMAND} -E copy
-    #        "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_3d.obj"
-    #        "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_3d.obj"
-    #COMMAND ${CMAKE_COMMAND} -E copy
-    #        "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_3d.mtl"
-    #        "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_3d.mtl"
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_3d.obj"
+            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_3d.obj"
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_3d.mtl"
+            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_3d.mtl"
     COMMAND ${CMAKE_COMMAND} -E copy
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_3d.fbx"
             "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_3d.fbx"
-    COMMAND ${CMAKE_COMMAND} -E copy
-            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/BAUM_by_efrohle.fbx"
-            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/BAUM_by_efrohle.fbx"
-    COMMAND ${CMAKE_COMMAND} -E copy
-            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_chilli_plant.fbx"
-            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_chilli_plant.fbx"
     COMMAND ${CMAKE_COMMAND} -E copy
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_chilli_plant.obj"
             "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_chilli_plant.obj"
     COMMAND ${CMAKE_COMMAND} -E copy
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_chilli_plant.mtl"
             "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_chilli_plant.mtl"
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_chilli_plant.fbx"
+            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_chilli_plant.fbx"
+    # Temporary until embedded textures are fixed
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/chilli_plant_albedo_depth8.png"
+            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/chilli_plant_albedo_depth8.png"
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/debug.jpg"
+            "${CMAKE_CURRENT_BINARY_DIR}/assets/models/debug.jpg"
 )
