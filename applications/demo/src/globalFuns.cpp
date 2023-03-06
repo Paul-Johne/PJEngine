@@ -277,32 +277,170 @@ void sendPJModelToVRAM(pje::PJBuffer& rawVertexBuffer, pje::PJBuffer& rawIndexBu
 	}
 }
 
-// ##### //
+// ################################################################################################################################################################## //
 
-///* TODO :: Returns a VkImage Handle without VkMemory */
-//VkImage createVkImage(VkExtent3D imageSize) {
-//
-//}
-//
-///* TODO :: Allocates VkMemory for a given VkImage */
-//VkDeviceMemory allocateVkImageMemory() {
-//
-//}
-//
+/* Returns a VkImage Handle without VkMemory */
+VkImage createVkImage(VkFormat format, VkExtent3D imageSize, VkSampleCountFlagBits sampleRate, VkImageUsageFlagBits usageFlags, uint32_t mipLevels = 1) {
+	VkImage image = VK_NULL_HANDLE;
+	
+	VkImageCreateInfo imageInfo;
+	imageInfo.sType = VkStructureType::VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageInfo.pNext = nullptr;
+	imageInfo.flags = 0;
+	imageInfo.imageType = VkImageType::VK_IMAGE_TYPE_2D;
+	imageInfo.format = format;
+	imageInfo.extent = imageSize;
+	imageInfo.mipLevels = mipLevels;
+	imageInfo.arrayLayers = 1;
+	imageInfo.samples = sampleRate;
+	imageInfo.tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
+	imageInfo.usage = usageFlags;
+	imageInfo.sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE;
+	imageInfo.queueFamilyIndexCount = 0;
+	imageInfo.pQueueFamilyIndices = nullptr;
+	imageInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
+
+	vkCreateImage(pje::context.logicalDevice, &imageInfo, nullptr, &image);
+	return image;
+}
+
+/* Allocates VkMemory for a given VkImage */
+VkDeviceMemory allocateVkImageMemory(VkImage image, VkMemoryPropertyFlags memoryFlags) {
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	VkMemoryRequirements memReq;
+	VkMemoryAllocateInfo memAllocInfo;
+
+	/* Considers VK_SAMPLE_COUNT_4_BIT for memReq.size */
+	vkGetImageMemoryRequirements(pje::context.logicalDevice, image, &memReq);
+
+	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memAllocInfo.pNext = nullptr;
+	memAllocInfo.allocationSize = memReq.size;
+	memAllocInfo.memoryTypeIndex = getMemoryTypeIndex(memReq.memoryTypeBits, memoryFlags);
+
+	pje::context.result = vkAllocateMemory(pje::context.logicalDevice, &memAllocInfo, nullptr, &memory);
+	if (pje::context.result != VK_SUCCESS) {
+		cout << "Error at allocateVkImageMemory::vkAllocateMemory" << endl;
+		throw runtime_error("Error at allocateVkImageMemory::vkAllocateMemory");
+	}
+
+	return memory;
+}
+
 ///* TODO :: Creates and binds VkImage and VkMemory of some pje::PJImage */
-//void createPJImage(pje::PJImage& rawImage) {
+//void createPJImage(pje::PJImage& rawImage, VkDeviceSize textureInfoSize) {
 //	rawImage.image = createVkImage();
+//	rawImage.deviceMemory = allocateVkImageMemory();
+//
+//	VkImageViewCreateInfo viewInfo;
 //}
 //
 ///* TODO :: Maintains pje::stagingBuffer and writes void* data into local device VkImage dst */
-//void copyToLocalDeviceImage() {
+//void copyToLocalDeviceImage(const void* data, VkDeviceSize dataSize, VkImage dst) {
+//	if (pje::stagingBuffer.buffer == VK_NULL_HANDLE || pje::stagingBuffer.size < dataSize) {
+//		if (pje::stagingBuffer.buffer != VK_NULL_HANDLE) {
+//			vkDestroyBuffer(pje::context.logicalDevice, pje::stagingBuffer.buffer, nullptr);
+//			vkFreeMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory, nullptr);
+//		}
 //
+//		createPJBuffer(
+//			pje::stagingBuffer,
+//			dataSize,
+//			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+//			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+//			"stagingBuffer"
+//		);
+//	}
 //}
 //
 ///* TODO :: Sends data on RAM as PJImage to [VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT]-VRAM */
 //void sendPJImageToVRAM(pje::PJImage& rawImageBuffer, const pje::PJModel& objectTarget, size_t indexOfPJModelTexture) {
 //
 //}
+
+/* Sets render targets for pje's Depth and MSAA */
+void createDepthAndMSAA(VkExtent3D imageSize) {
+	
+	/* MSAA IMAGE */
+
+	pje::rtMsaa.image = createVkImage(
+		pje::config::outputFormat,
+		imageSize,
+		pje::config::msaaFactor,
+		VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+	);
+
+	pje::rtMsaa.deviceMemory = allocateVkImageMemory(
+		pje::rtMsaa.image,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+	);
+
+	vkBindImageMemory(pje::context.logicalDevice, pje::rtMsaa.image, pje::rtMsaa.deviceMemory, 0);
+
+	VkImageViewCreateInfo msaaImageViewInfo;
+	msaaImageViewInfo.sType = VkStructureType::VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	msaaImageViewInfo.pNext = nullptr;
+	msaaImageViewInfo.flags = 0;
+	msaaImageViewInfo.image = pje::rtMsaa.image;
+	msaaImageViewInfo.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
+	msaaImageViewInfo.format = pje::config::outputFormat;
+	msaaImageViewInfo.components = VkComponentMapping{
+		VK_COMPONENT_SWIZZLE_IDENTITY	// properties r,g,b,a stay as their identity 
+	};
+	msaaImageViewInfo.subresourceRange = VkImageSubresourceRange{
+		VK_IMAGE_ASPECT_COLOR_BIT,		// let driver know what this is used for
+		0,								// for mipmap
+		1,								// -||-
+		0,								// for certain layer in VkImage
+		1								// -||-
+	};
+
+	pje::context.result = vkCreateImageView(pje::context.logicalDevice, &msaaImageViewInfo, nullptr, &pje::rtMsaa.imageView);
+	if (pje::context.result != VK_SUCCESS) {
+		cout << "Error at createRenderTarget::vkCreateImageView" << endl;
+		throw runtime_error("Error at createRenderTarget::vkCreateImageView");
+	}
+
+	/* DEPTH IMAGE */
+
+	pje::rtDepth.image = createVkImage(
+		pje::config::depthFormat,
+		imageSize,
+		pje::config::msaaFactor,
+		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+	);
+
+	pje::rtDepth.deviceMemory = allocateVkImageMemory(
+		pje::rtDepth.image,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+	);
+
+	vkBindImageMemory(pje::context.logicalDevice, pje::rtDepth.image, pje::rtDepth.deviceMemory, 0);
+
+	VkImageViewCreateInfo depthImageViewInfo;
+	depthImageViewInfo.sType = VkStructureType::VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	depthImageViewInfo.pNext = nullptr;
+	depthImageViewInfo.flags = 0;
+	depthImageViewInfo.image = pje::rtDepth.image;
+	depthImageViewInfo.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
+	depthImageViewInfo.format = pje::config::depthFormat;
+	depthImageViewInfo.components = VkComponentMapping{
+		VK_COMPONENT_SWIZZLE_IDENTITY	// properties r,g,b,a stay as their identity 
+	};
+	depthImageViewInfo.subresourceRange = VkImageSubresourceRange{
+		VK_IMAGE_ASPECT_DEPTH_BIT,		// let driver know what this is used for
+		0,								// for mipmap
+		1,								// -||-
+		0,								// for certain layer in VkImage
+		1								// -||-
+	};
+
+	pje::context.result = vkCreateImageView(pje::context.logicalDevice, &depthImageViewInfo, nullptr, &pje::rtDepth.imageView);
+	if (pje::context.result != VK_SUCCESS) {
+		cout << "Error at createRenderTarget::vkCreateImageView" << endl;
+		throw runtime_error("Error at createRenderTarget::vkCreateImageView");
+	}
+}
 
 // ################################################################################################################################################################## //
 
@@ -416,132 +554,6 @@ void createUniformBuffer(pje::PJBuffer& rawUniformBuffer, VkDeviceSize sizeofUni
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		debugName
 	);
-}
-
-// ################################################################################################################################################################## //
-
-/* Sets render targets for pje's Depth and MSAA*/
-void createDepthAndMSAA(VkExtent3D imageSize) {
-	/* MSAA IMAGE */
-	VkImageCreateInfo msaaImageInfo;
-	msaaImageInfo.sType = VkStructureType::VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	msaaImageInfo.pNext = nullptr;
-	msaaImageInfo.flags = 0;
-	msaaImageInfo.imageType = VkImageType::VK_IMAGE_TYPE_2D;
-	msaaImageInfo.format = pje::config::outputFormat;
-	msaaImageInfo.extent = imageSize;
-	msaaImageInfo.mipLevels = 1;
-	msaaImageInfo.arrayLayers = 1;											// for Cubemaps :)
-	msaaImageInfo.samples = pje::config::msaaFactor;
-	msaaImageInfo.tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
-	msaaImageInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	msaaImageInfo.sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE;
-	msaaImageInfo.queueFamilyIndexCount = 0;
-	msaaImageInfo.pQueueFamilyIndices = nullptr;
-	msaaImageInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
-
-	vkCreateImage(pje::context.logicalDevice, &msaaImageInfo, nullptr, &pje::rtMsaa.image);
-
-	VkMemoryRequirements memReq;
-	VkMemoryAllocateInfo memAllocInfo;
-
-	/* Considers VK_SAMPLE_COUNT_4_BIT for memReq.size */
-	vkGetImageMemoryRequirements(pje::context.logicalDevice, pje::rtMsaa.image, &memReq);
-
-	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	memAllocInfo.pNext = nullptr;
-	memAllocInfo.allocationSize = memReq.size;
-	memAllocInfo.memoryTypeIndex = getMemoryTypeIndex(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	pje::context.result = vkAllocateMemory(pje::context.logicalDevice, &memAllocInfo, nullptr, &pje::rtMsaa.deviceMemory);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at createDepthRenderTarget::vkAllocateMemory" << endl;
-		throw runtime_error("Error at createDepthRenderTarget::vkAllocateMemory");
-	}
-	vkBindImageMemory(pje::context.logicalDevice, pje::rtMsaa.image, pje::rtMsaa.deviceMemory, 0);
-
-	VkImageViewCreateInfo msaaImageViewInfo;
-	msaaImageViewInfo.sType = VkStructureType::VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	msaaImageViewInfo.pNext = nullptr;
-	msaaImageViewInfo.flags = 0;
-	msaaImageViewInfo.image = pje::rtMsaa.image;
-	msaaImageViewInfo.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
-	msaaImageViewInfo.format = pje::config::outputFormat;
-	msaaImageViewInfo.components = VkComponentMapping{
-		VK_COMPONENT_SWIZZLE_IDENTITY	// properties r,g,b,a stay as their identity 
-	};
-	msaaImageViewInfo.subresourceRange = VkImageSubresourceRange{
-		VK_IMAGE_ASPECT_COLOR_BIT,		// let driver know what this is used for
-		0,								// for mipmap
-		1,								// -||-
-		0,								// for certain layer in VkImage
-		1								// -||-
-	};
-
-	pje::context.result = vkCreateImageView(pje::context.logicalDevice, &msaaImageViewInfo, nullptr, &pje::rtMsaa.imageView);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at createRenderTarget::vkCreateImageView" << endl;
-		throw runtime_error("Error at createRenderTarget::vkCreateImageView");
-	}
-
-	/* DEPTH IMAGE */
-	VkImageCreateInfo depthImageInfo;
-	depthImageInfo.sType = VkStructureType::VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	depthImageInfo.pNext = nullptr;
-	depthImageInfo.flags = 0;
-	depthImageInfo.imageType = VkImageType::VK_IMAGE_TYPE_2D;
-	depthImageInfo.format = pje::config::depthFormat;						// TODO (civ)
-	depthImageInfo.extent = imageSize;
-	depthImageInfo.mipLevels = 1;
-	depthImageInfo.arrayLayers = 1;											// for Cubemaps :)
-	depthImageInfo.samples = pje::config::msaaFactor;
-	depthImageInfo.tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
-	depthImageInfo.usage = VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-	depthImageInfo.sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE;
-	depthImageInfo.queueFamilyIndexCount = 0;
-	depthImageInfo.pQueueFamilyIndices = nullptr;
-	depthImageInfo.initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
-
-	vkCreateImage(pje::context.logicalDevice, &depthImageInfo, nullptr, &pje::rtDepth.image);
-
-	/* creating VkMemory without vmaFunctions - TEMPORARY */
-	vkGetImageMemoryRequirements(pje::context.logicalDevice, pje::rtDepth.image, &memReq);
-
-	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	memAllocInfo.pNext = nullptr;
-	memAllocInfo.allocationSize = memReq.size;
-	memAllocInfo.memoryTypeIndex = getMemoryTypeIndex(memReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	pje::context.result = vkAllocateMemory(pje::context.logicalDevice, &memAllocInfo, nullptr, &pje::rtDepth.deviceMemory);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at createRenderTarget::vkAllocateMemory" << endl;
-		throw runtime_error("Error at createRenderTarget::vkAllocateMemory");
-	}
-	vkBindImageMemory(pje::context.logicalDevice, pje::rtDepth.image, pje::rtDepth.deviceMemory, 0);
-
-	VkImageViewCreateInfo depthImageViewInfo;
-	depthImageViewInfo.sType = VkStructureType::VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	depthImageViewInfo.pNext = nullptr;
-	depthImageViewInfo.flags = 0;
-	depthImageViewInfo.image = pje::rtDepth.image;
-	depthImageViewInfo.viewType = VkImageViewType::VK_IMAGE_VIEW_TYPE_2D;
-	depthImageViewInfo.format = pje::config::depthFormat;
-	depthImageViewInfo.components = VkComponentMapping{
-		VK_COMPONENT_SWIZZLE_IDENTITY	// properties r,g,b,a stay as their identity 
-	};
-	depthImageViewInfo.subresourceRange = VkImageSubresourceRange{
-		VK_IMAGE_ASPECT_DEPTH_BIT,		// let driver know what this is used for
-		0,								// for mipmap
-		1,								// -||-
-		0,								// for certain layer in VkImage
-		1								// -||-
-	};
-
-	pje::context.result = vkCreateImageView(pje::context.logicalDevice, &depthImageViewInfo, nullptr, &pje::rtDepth.imageView);
-	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at createRenderTarget::vkCreateImageView" << endl;
-		throw runtime_error("Error at createRenderTarget::vkCreateImageView");
-	}
 }
 
 // ################################################################################################################################################################## //
