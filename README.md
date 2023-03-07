@@ -1,7 +1,7 @@
 # PJEngine (Graphic Engine using Vulkan SDK to render animations in realtime)
 Praxisprojekt (*Beginn: SS2022*)
 
-![Gif](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/gifsForGithub/001.gif)
+![Gif](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/gifsForGithub/PJEngine_cover.gif)
 
 ## Installation Guide - OS Windows - Visual Studio CMake Project
 
@@ -18,10 +18,10 @@ Currently this project uses version 1.3 of Vulkan.
 Since the goal is to create a **cross-platform project** with **dynamically linked libraries** most of the required 3rd party libraries aren't included 
 in the project. The following table shows which other libraries aside from Vulkan are necessary and how they are included.
 
-static | dynamic | dynamic | dynamic
-:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:
-![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_008.png) | ![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_006.png) | ![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_007.png) | Assimp
-[Link](https://github.com/ocornut/imgui) | [Link](https://github.com/g-truc/glm) | [Link](https://github.com/glfw/glfw/releases/tag/3.3.7) | [Link](https://github.com/assimp/assimp)
+static | dynamic | dynamic | dynamic | static
+:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:|:-------------------------:
+![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_008.png) | ![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_006.png) | ![](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/imagesForGithub/installation_guide_007.png) | Assimp | stb_image.h
+[Link](https://github.com/ocornut/imgui) | [Link](https://github.com/g-truc/glm) | [Link](https://github.com/glfw/glfw/releases/tag/3.3.7) | [Link](https://github.com/assimp/assimp) | [Link](https://github.com/nothings/stb)
 
 ### Linking of dynamic libraries
 ImGui is already coming with this repo, but the other libraries need to be installed somewhere on your device. In the next step you will work with CMake Gui

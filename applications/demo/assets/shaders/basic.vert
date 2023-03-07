@@ -6,7 +6,8 @@
 layout(location = 0) in vec3 pos;
 layout(location = 1) in vec3 color;
 layout(location = 2) in vec3 normal;
-layout(location = 3) in uvec2 boneRange;	// {offset, boneCount}
+layout(location = 3) in vec2 texCoord;
+layout(location = 4) in uvec2 boneRange;	// {offset, boneCount}
 
 /* Uniforms | std140 => vec4 convention */
 /* layout(DescriptorSetLayout, VkDescriptorSetLayoutBinding of DescriptorSetLayout, layout convention/alignment) */
@@ -39,6 +40,7 @@ layout(set = 0, binding = 2, std430) readonly buffer BONEBUFFER {
 layout(location = 0) out VOut {
 	vec3 fragColor;
 	vec3 normal;
+	vec2 texCoord;
 } vOut;
 
 void main() {
@@ -56,4 +58,5 @@ void main() {
 	gl_Position = uniforms.mvp * vec4(animPos.xyz, 1.0);
 	vOut.fragColor = color;
 	vOut.normal = (uniforms.viewMatrix * transpose(inverse(uniforms.modelMatrix)) * vec4(normal, 0.0)).xyz;
+	vOut.texCoord = texCoord;
 }

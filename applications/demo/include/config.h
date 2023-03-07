@@ -17,7 +17,10 @@ namespace pje::config {
 	inline constexpr	VkFormat						depthFormat						= VkFormat::VK_FORMAT_D32_SFLOAT;									// 32 bits for depth component
 	inline constexpr	float							clearValueDefault[4]			= { 0.0f, 0.0f, 0.0f, 1.0f };										// Default Background
 
+	inline constexpr	VkSampleCountFlagBits			plainImageFactor				= VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
 	inline constexpr	VkSampleCountFlagBits			msaaFactor						= VkSampleCountFlagBits::VK_SAMPLE_COUNT_4_BIT;
+
+	inline constexpr	bool							enableAnisotropy				= true;																// enables 2x Anisotropy
 
 	inline constexpr	uint32_t						initWindowWidth					= 1280;
 	inline constexpr	uint32_t						initWindowHeight				= 720;

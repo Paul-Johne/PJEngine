@@ -65,8 +65,6 @@ void clearShaderStages() {
 	pje::context.shaderStageInfos.clear();
 }
 
-// ################################################################################################################################################################## //
-
 /* Searches for an memory type index of the choosen physical device that equals memoryTypeBits and the given flags*/
 uint32_t getMemoryTypeIndex(uint32_t memoryTypeBits, VkMemoryPropertyFlags flags) { 
 	VkPhysicalDeviceMemoryProperties memProps;
@@ -82,11 +80,11 @@ uint32_t getMemoryTypeIndex(uint32_t memoryTypeBits, VkMemoryPropertyFlags flags
 	throw runtime_error("Error at getMemoryTypeIndex");
 }
 
-// ##### //
+// ################################################################################################################################################################## //
 
 /* Returns a VkBuffer Handle without VkMemory */
 VkBuffer createVkBuffer(VkDeviceSize size, VkBufferUsageFlags usageFlags, const char* debugName = nullptr) {
-	VkBuffer buffer = VK_NULL_HANDLE;
+	VkBuffer buffer(VK_NULL_HANDLE);
 	
 	VkBufferCreateInfo vkBufferInfo;
 	vkBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -116,7 +114,7 @@ VkBuffer createVkBuffer(VkDeviceSize size, VkBufferUsageFlags usageFlags, const 
 
 /* Allocates VkMemory for a given VkBuffer */
 VkDeviceMemory allocateVkBufferMemory(VkBuffer buffer, VkMemoryPropertyFlags memoryFlags) {
-	VkDeviceMemory memory = VK_NULL_HANDLE;
+	VkDeviceMemory memory(VK_NULL_HANDLE);
 
 	// Calculates the size the given VkBuffer requires
 	VkMemoryRequirements memReq;
@@ -140,9 +138,8 @@ VkDeviceMemory allocateVkBufferMemory(VkBuffer buffer, VkMemoryPropertyFlags mem
 /* Creates and binds VkBuffer and Memory of some pje::PJBuffer */
 void createPJBuffer(pje::PJBuffer& rawPJBuffer, VkDeviceSize size, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags, const char* debugName = nullptr) {
 	rawPJBuffer.buffer = createVkBuffer(size, usageFlags, debugName);
-	rawPJBuffer.size = size;
-	
 	rawPJBuffer.deviceMemory = allocateVkBufferMemory(rawPJBuffer.buffer, memoryFlags);
+	rawPJBuffer.size = size;
 	rawPJBuffer.flags = memoryFlags;
 
 	vkBindBufferMemory(pje::context.logicalDevice, rawPJBuffer.buffer, rawPJBuffer.deviceMemory, 0);
@@ -150,6 +147,8 @@ void createPJBuffer(pje::PJBuffer& rawPJBuffer, VkDeviceSize size, VkBufferUsage
 
 /* Maintains pje::stagingBuffer and writes void* data into local device VkBuffer dst */
 void copyToLocalDeviceBuffer(const void* data, VkDeviceSize dataSize, VkBuffer dst, VkDeviceSize dstOffset = 0) {
+	/* STAGING STEP => copy to coherent buffer */
+	
 	if (pje::stagingBuffer.buffer == VK_NULL_HANDLE || pje::stagingBuffer.size < dataSize) {
 		if (pje::stagingBuffer.buffer != VK_NULL_HANDLE) {
 			vkDestroyBuffer(pje::context.logicalDevice, pje::stagingBuffer.buffer, nullptr);
@@ -173,7 +172,10 @@ void copyToLocalDeviceBuffer(const void* data, VkDeviceSize dataSize, VkBuffer d
 	// vkFlushMappedMemoryRange() || VK_MEMORY_PROPERTY_HOST_COHERENT_BIT == 1
 	vkUnmapMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory);
 
-	static VkCommandBuffer stagingCommandBuffer = VK_NULL_HANDLE;	// static variable will be created once for all executions of the given function
+	/* SUBMISSION STEP => copy to local device buffer */
+
+	// static variable will be created once for all executions of the given function
+	static VkCommandBuffer stagingCommandBuffer = VK_NULL_HANDLE;
 
 	if (stagingCommandBuffer == VK_NULL_HANDLE) {
 		VkCommandBufferAllocateInfo commandBufferAllocateInfo;
@@ -280,8 +282,8 @@ void sendPJModelToVRAM(pje::PJBuffer& rawVertexBuffer, pje::PJBuffer& rawIndexBu
 // ################################################################################################################################################################## //
 
 /* Returns a VkImage Handle without VkMemory */
-VkImage createVkImage(VkFormat format, VkExtent3D imageSize, VkSampleCountFlagBits sampleRate, VkImageUsageFlagBits usageFlags, uint32_t mipLevels = 1) {
-	VkImage image = VK_NULL_HANDLE;
+VkImage createVkImage(VkFormat format, VkExtent3D imageSize, VkSampleCountFlagBits sampleRate, VkImageUsageFlags usageFlags, uint32_t mipLevels = 1) {
+	VkImage image(VK_NULL_HANDLE);
 	
 	VkImageCreateInfo imageInfo;
 	imageInfo.sType = VkStructureType::VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -306,7 +308,7 @@ VkImage createVkImage(VkFormat format, VkExtent3D imageSize, VkSampleCountFlagBi
 
 /* Allocates VkMemory for a given VkImage */
 VkDeviceMemory allocateVkImageMemory(VkImage image, VkMemoryPropertyFlags memoryFlags) {
-	VkDeviceMemory memory = VK_NULL_HANDLE;
+	VkDeviceMemory memory(VK_NULL_HANDLE);
 	VkMemoryRequirements memReq;
 	VkMemoryAllocateInfo memAllocInfo;
 
@@ -327,40 +329,230 @@ VkDeviceMemory allocateVkImageMemory(VkImage image, VkMemoryPropertyFlags memory
 	return memory;
 }
 
-///* TODO :: Creates and binds VkImage and VkMemory of some pje::PJImage */
-//void createPJImage(pje::PJImage& rawImage, VkDeviceSize textureInfoSize) {
-//	rawImage.image = createVkImage();
-//	rawImage.deviceMemory = allocateVkImageMemory();
-//
-//	VkImageViewCreateInfo viewInfo;
-//}
-//
-///* TODO :: Maintains pje::stagingBuffer and writes void* data into local device VkImage dst */
-//void copyToLocalDeviceImage(const void* data, VkDeviceSize dataSize, VkImage dst) {
-//	if (pje::stagingBuffer.buffer == VK_NULL_HANDLE || pje::stagingBuffer.size < dataSize) {
-//		if (pje::stagingBuffer.buffer != VK_NULL_HANDLE) {
-//			vkDestroyBuffer(pje::context.logicalDevice, pje::stagingBuffer.buffer, nullptr);
-//			vkFreeMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory, nullptr);
-//		}
-//
-//		createPJBuffer(
-//			pje::stagingBuffer,
-//			dataSize,
-//			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-//			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-//			"stagingBuffer"
-//		);
-//	}
-//}
-//
-///* TODO :: Sends data on RAM as PJImage to [VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT]-VRAM */
-//void sendPJImageToVRAM(pje::PJImage& rawImageBuffer, const pje::PJModel& objectTarget, size_t indexOfPJModelTexture) {
-//
-//}
+/* Returns a VkSampler Handle for a combined image sampler */
+VkSampler createTexSampler() {
+	static VkSampler sampler(VK_NULL_HANDLE);
 
-/* Sets render targets for pje's Depth and MSAA */
-void createDepthAndMSAA(VkExtent3D imageSize) {
+	VkSamplerCreateInfo texSamplerInfo;
+	texSamplerInfo.sType					= VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	texSamplerInfo.pNext					= nullptr;
+	texSamplerInfo.flags					= 0;
+	texSamplerInfo.magFilter				= VK_FILTER_NEAREST;						// important for pixel look !
+	texSamplerInfo.minFilter				= VK_FILTER_NEAREST;						// important for pixel look !
+	texSamplerInfo.addressModeU				= VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	texSamplerInfo.addressModeV				= VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	texSamplerInfo.addressModeW				= VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	if (pje::config::enableAnisotropy)
+		texSamplerInfo.anisotropyEnable		= VK_TRUE;
+	else
+		texSamplerInfo.anisotropyEnable		= VK_FALSE;
+	texSamplerInfo.maxAnisotropy			= 2.0f;										// TODO(civ => 2x anisotropic filtering)
+	texSamplerInfo.borderColor				= VK_BORDER_COLOR_INT_TRANSPARENT_BLACK;
+	texSamplerInfo.unnormalizedCoordinates	= VK_FALSE;
+	texSamplerInfo.compareEnable			= VK_FALSE;
+	texSamplerInfo.compareOp				= VkCompareOp::VK_COMPARE_OP_ALWAYS;
+	texSamplerInfo.mipmapMode				= VK_SAMPLER_MIPMAP_MODE_LINEAR;			// TODO(for later use)
+	texSamplerInfo.mipLodBias				= 0.0f;
+	texSamplerInfo.minLod					= 0.0f;
+	texSamplerInfo.maxLod					= 0.0f;
+
+	vkCreateSampler(pje::context.logicalDevice, &texSamplerInfo, nullptr, &sampler);
+
+	return sampler;
+}
+
+/* Creates and binds VkImage and VkMemory of some pje::PJImage for SAMPLING */
+void createPJImage(pje::PJImage& rawImage, pje::TextureInfo textureInfoSize) {
+	rawImage.image = createVkImage(
+		pje::config::outputFormat, 
+		VkExtent3D{ 
+			static_cast<unsigned int>(textureInfoSize.x_width), 
+			static_cast<unsigned int>(textureInfoSize.y_height), 
+			1 
+		},
+		pje::config::plainImageFactor,
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+	);
+	rawImage.deviceMemory = allocateVkImageMemory(
+		rawImage.image,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+	);
+
+	vkBindImageMemory(pje::context.logicalDevice, rawImage.image, rawImage.deviceMemory, 0);
+
+	VkImageViewCreateInfo viewInfo;
+	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfo.pNext = nullptr;
+	viewInfo.flags = 0;
+	viewInfo.image = rawImage.image;
+	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewInfo.format = pje::config::outputFormat;
+	viewInfo.components = VkComponentMapping{ VK_COMPONENT_SWIZZLE_IDENTITY };
+	viewInfo.subresourceRange = VkImageSubresourceRange{
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0, 1, 0, 1					// mipLevel and array details
+	};
+
+	vkCreateImageView(pje::context.logicalDevice, &viewInfo, nullptr, &rawImage.imageView);
+}
+
+/* Maintains pje::stagingBuffer and writes void* data into local device VkImage dst */
+void copyToLocalDeviceImage(const void* data, pje::TextureInfo texInfo, VkImage dst, VkImageLayout currentDstLayout = VK_IMAGE_LAYOUT_UNDEFINED) {
+	/* STAGING STEP => copy to coherent buffer */
 	
+	if (pje::stagingBuffer.buffer == VK_NULL_HANDLE || pje::stagingBuffer.size < texInfo.size) {
+		if (pje::stagingBuffer.buffer != VK_NULL_HANDLE) {
+			vkDestroyBuffer(pje::context.logicalDevice, pje::stagingBuffer.buffer, nullptr);
+			vkFreeMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory, nullptr);
+		}
+
+		createPJBuffer(
+			pje::stagingBuffer,
+			texInfo.size,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			"stagingBuffer"
+		);
+	}
+
+	// Staging of PJModel.m_uncompressedTextures[textureID]
+	void* stagingPointer;
+	vkMapMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory, 0, VK_WHOLE_SIZE, 0, &stagingPointer);
+	memcpy(stagingPointer, data, texInfo.size);
+	vkUnmapMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory);
+
+	/* SUBMISSION STEP => copy to local device buffer */
+
+	static VkCommandBuffer stagingCommandBuffer = VK_NULL_HANDLE;
+
+	if (stagingCommandBuffer == VK_NULL_HANDLE) {
+		VkCommandBufferAllocateInfo commandBufferAllocateInfo;
+		commandBufferAllocateInfo.sType					= VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		commandBufferAllocateInfo.pNext					= nullptr;
+		commandBufferAllocateInfo.level					= VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		commandBufferAllocateInfo.commandPool			= pje::context.commandPool;
+		commandBufferAllocateInfo.commandBufferCount	= 1;
+
+		vkAllocateCommandBuffers(pje::context.logicalDevice, &commandBufferAllocateInfo, &stagingCommandBuffer);
+	}
+	else {
+		vkResetCommandBuffer(stagingCommandBuffer, 0);
+	}
+
+	VkCommandBufferBeginInfo commandBufferBeginInfo;
+	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	commandBufferBeginInfo.pNext = nullptr;
+	commandBufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	commandBufferBeginInfo.pInheritanceInfo = nullptr;
+
+	/* START - RECORDING */
+	vkBeginCommandBuffer(stagingCommandBuffer, &commandBufferBeginInfo);
+
+	VkImageSubresourceRange imageRange{
+		VK_IMAGE_ASPECT_COLOR_BIT,		// aspectMask
+		0,								// baseMipLevel
+		1,								// levelCount
+		0,								// baseArrayLayer
+		1								// layerCount
+	};
+
+	VkImageMemoryBarrier memBarrier;
+	memBarrier.sType				= VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	memBarrier.pNext				= nullptr;
+	memBarrier.oldLayout			= currentDstLayout;
+	memBarrier.newLayout			= VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	memBarrier.srcQueueFamilyIndex	= VK_QUEUE_FAMILY_IGNORED;					// for ownership change
+	memBarrier.dstQueueFamilyIndex	= VK_QUEUE_FAMILY_IGNORED;					// for ownership change
+	memBarrier.image				= dst;
+	memBarrier.subresourceRange		= imageRange;
+	memBarrier.srcAccessMask		= 0;										// sync cache access (what must happen before the barrier in current pipeline stage)
+	memBarrier.dstAccessMask		= VK_ACCESS_TRANSFER_WRITE_BIT;				// sync cache access (which operation must wait for the resource)
+	
+	/* Transition 1/2 */
+	vkCmdPipelineBarrier(
+		stagingCommandBuffer,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,	// pipeline stage in which the barrier takes effect
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		0,									// 0 || VK_DEPENDENCY_BY_REGION_BIT => read what's in the VkImage so far
+		0, nullptr,							// Memory Barriers
+		0, nullptr,							// Buffer Memory Barriers
+		1, &memBarrier						// Image Memory Barriers
+	);
+
+	VkImageSubresourceLayers imagePart{
+		VK_IMAGE_ASPECT_COLOR_BIT,		// aspectMask
+		0,								// mipLevel
+		0,								// baseArrayLayer
+		1								// layerCount
+	};
+
+	VkBufferImageCopy region1;
+	region1.bufferOffset		= 0;
+	region1.bufferRowLength		= 0;
+	region1.bufferImageHeight	= 0;
+	region1.imageSubresource	= imagePart;
+	region1.imageOffset			= VkOffset3D{ 0, 0, 0 };
+	region1.imageExtent			= VkExtent3D{ 
+		static_cast<unsigned int>(texInfo.x_width), static_cast<unsigned int>(texInfo.y_height), 1 
+	};
+
+	vkCmdCopyBufferToImage(stagingCommandBuffer, pje::stagingBuffer.buffer, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region1);
+
+	/* Transition 2/2 */
+	memBarrier.oldLayout		= VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	memBarrier.newLayout		= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	memBarrier.srcAccessMask	= VK_ACCESS_TRANSFER_WRITE_BIT;
+	memBarrier.dstAccessMask	= VK_ACCESS_SHADER_READ_BIT;
+
+	vkCmdPipelineBarrier(
+		stagingCommandBuffer,
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,	// which pipeline state has to wait until the resource is available in newLayout
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &memBarrier
+	);
+
+	vkEndCommandBuffer(stagingCommandBuffer);
+	/* END - RECORDING */
+
+	VkSubmitInfo submitInfo;
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext = nullptr;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &stagingCommandBuffer;
+	submitInfo.waitSemaphoreCount = 0;
+	submitInfo.pWaitSemaphores = nullptr;
+	submitInfo.pWaitDstStageMask = nullptr;
+	submitInfo.signalSemaphoreCount = 0;
+	submitInfo.pSignalSemaphores = nullptr;
+
+	/* Submission of VkCommandBuffer onto VkQueue */
+	vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, pje::context.fenceCopiedBuffer);
+
+	/* Waits until CommandBuffers were submitted */
+	vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer, VK_TRUE, numeric_limits<uint64_t>::max());
+	vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer);
+}
+
+/* Sends data on RAM as PJImage to [VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT]-VRAM */
+void sendPJImageToVRAM(pje::PJImage& rawImageBuffer, const pje::PJModel& objectTarget, size_t indexOfPJModelTexture) {
+	createPJImage(rawImageBuffer, objectTarget.m_textureInfos[indexOfPJModelTexture]);
+	
+	copyToLocalDeviceImage(
+		objectTarget.m_uncompressedTextures[indexOfPJModelTexture].data(), 
+		objectTarget.m_textureInfos[indexOfPJModelTexture], 
+		rawImageBuffer.image
+	);
+
+	if (pje::context.texSampler == VK_NULL_HANDLE) {
+		pje::context.texSampler = createTexSampler();
+	}
+}
+
+/* Sets render targets for pje's Depth and MSAA => pje::rtMsaa and pje::rtDepth */
+void createDepthAndMSAA(VkExtent3D imageSize) {
 	/* MSAA IMAGE */
 
 	pje::rtMsaa.image = createVkImage(
@@ -397,8 +589,8 @@ void createDepthAndMSAA(VkExtent3D imageSize) {
 
 	pje::context.result = vkCreateImageView(pje::context.logicalDevice, &msaaImageViewInfo, nullptr, &pje::rtMsaa.imageView);
 	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at createRenderTarget::vkCreateImageView" << endl;
-		throw runtime_error("Error at createRenderTarget::vkCreateImageView");
+		cout << "Error at createDepthAndMSAA::vkCreateImageView" << endl;
+		throw runtime_error("Error at createDepthAndMSAA::vkCreateImageView");
 	}
 
 	/* DEPTH IMAGE */
@@ -437,8 +629,8 @@ void createDepthAndMSAA(VkExtent3D imageSize) {
 
 	pje::context.result = vkCreateImageView(pje::context.logicalDevice, &depthImageViewInfo, nullptr, &pje::rtDepth.imageView);
 	if (pje::context.result != VK_SUCCESS) {
-		cout << "Error at createRenderTarget::vkCreateImageView" << endl;
-		throw runtime_error("Error at createRenderTarget::vkCreateImageView");
+		cout << "Error at createDepthAndMSAA::vkCreateImageView" << endl;
+		throw runtime_error("Error at createDepthAndMSAA::vkCreateImageView");
 	}
 }
 
@@ -447,7 +639,7 @@ void createDepthAndMSAA(VkExtent3D imageSize) {
 /* Defines the Layout of VkDescriptorSet which declares needed data in each shader */
 void createDescriptorSetLayout(VkDescriptorSetLayout& rawLayout) {
 	// SLOT (or binding) of VkDescriptorSetLayout
-	array<VkDescriptorSetLayoutBinding, 3> layoutBindings;
+	array<VkDescriptorSetLayoutBinding, 4> layoutBindings;
 							
 	layoutBindings[0].binding = 0;																// layout(binding = n)
 	layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -467,6 +659,12 @@ void createDescriptorSetLayout(VkDescriptorSetLayout& rawLayout) {
 	layoutBindings[2].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	layoutBindings[2].pImmutableSamplers = nullptr;
 
+	layoutBindings[3].binding = 3;
+	layoutBindings[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	layoutBindings[3].descriptorCount = 1;
+	layoutBindings[3].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	layoutBindings[3].pImmutableSamplers = nullptr;
+
 	VkDescriptorSetLayoutCreateInfo layoutCreateInfo;
 	layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	layoutCreateInfo.pNext = nullptr;
@@ -481,11 +679,12 @@ void createDescriptorSetLayout(VkDescriptorSetLayout& rawLayout) {
 	}
 }
 
-/* Creates a VkDescriptorPool whose VkDescritorSet-items have 1 uniform and 2 storage buffers */
+/* Creates a VkDescriptorPool whose VkDescritorSet-items have 1 uniform, 2 storage buffers and 1 combined image sampler*/
 void createDescriptorPool(VkDescriptorPool& rawPool) {
 	auto poolSizes = array{														// TODO (should be defined outside of function for a better abstraction)
 		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
-		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2}
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
+		VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1}
 	};
 
 	VkDescriptorPoolCreateInfo poolCreateInfo;
@@ -521,7 +720,7 @@ void createDescriptorSet(VkDescriptorSet &rawDescriptorSet) {
 
 /* Links uniform buffer or storage buffer to an existing VkDescriptorSet */
 void linkDescriptorSetToBuffer(VkDescriptorSet& descriptorSet, uint32_t dstBinding, VkDescriptorType type, pje::PJBuffer& buffer, VkDeviceSize sizeofData = VK_WHOLE_SIZE) {
-	/* Telling descriptorSet what it is suppose to contain */
+	/* Telling descriptorSet what it is supposed to contain */
 	VkDescriptorBufferInfo bufferInfo;
 	bufferInfo.buffer = buffer.buffer;							// buffer content on RAM
 	bufferInfo.offset = 0;
@@ -538,6 +737,31 @@ void linkDescriptorSetToBuffer(VkDescriptorSet& descriptorSet, uint32_t dstBindi
 	update.descriptorType = type;
 	update.pImageInfo = nullptr;
 	update.pBufferInfo = &bufferInfo;							// descriptor's buffer
+	update.pTexelBufferView = nullptr;
+
+	/* Descriptor/Pointer Update */
+	vkUpdateDescriptorSets(pje::context.logicalDevice, 1, &update, 0, nullptr);
+}
+
+/* Links VkImageView and VkSampler to and existing VkDescriptorSet */
+void linkDescriptorSetToImage(VkDescriptorSet& descriptorSet, uint32_t dstBinding, VkDescriptorType type, pje::PJImage& image, VkSampler sampler) {
+	/* Telling descriptorSet what it is supposed to contain */
+	VkDescriptorImageInfo imageInfo;
+	imageInfo.sampler		= sampler;
+	imageInfo.imageView		= image.imageView;
+	imageInfo.imageLayout	= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;		// layout the texture is currently in
+
+	/* Updating descriptors of descriptorSet */
+	VkWriteDescriptorSet update;
+	update.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	update.pNext			= nullptr;
+	update.dstSet			= descriptorSet;
+	update.dstBinding		= dstBinding;
+	update.dstArrayElement	= 0;										// first element		in array[descriptorCount]
+	update.descriptorCount	= 1;										// amount of elements	in array[descriptorCount]
+	update.descriptorType	= type;
+	update.pImageInfo		= &imageInfo;								// descriptor's image
+	update.pBufferInfo		= nullptr;
 	update.pTexelBufferView = nullptr;
 
 	/* Descriptor/Pointer Update */
@@ -575,6 +799,12 @@ void pje::cleanupRealtimeRendering(bool reset) {
 
 	/* should ONLY be used by stopVulkan() */
 	if (!reset) {
+		vkDestroySampler(pje::context.logicalDevice, pje::context.texSampler, nullptr);
+
+		vkDestroyImageView(pje::context.logicalDevice, pje::rtAlbedo.imageView, nullptr);
+		vkFreeMemory(pje::context.logicalDevice, pje::rtAlbedo.deviceMemory, nullptr);
+		vkDestroyImage(pje::context.logicalDevice, pje::rtAlbedo.image, nullptr);
+
 		vkDestroyDescriptorPool(pje::context.logicalDevice, pje::context.descriptorPool, nullptr);			// also does vkFreeDescriptorSets() automatically
 
 		vkFreeMemory(pje::context.logicalDevice, pje::stagingBuffer.deviceMemory, nullptr);
@@ -928,7 +1158,7 @@ void setupRealtimeRendering(bool reset = false) {
 		auto vertexAttribsDesc = pje::PJVertex::getInputAttributeDesc();
 
 		/* Usally sizes of vertices and their attributes are defined here
-		 * It has similar tasks to OpenGL's glBufferData(), glVertexAttribPointer() etc. (Vertex Shader => layout in) */
+		 * It has similar tasks to OpenGL's glBufferData(), glVertexAttribPointer() => (Vertex Shader => layout in) */
 		VkPipelineVertexInputStateCreateInfo vertexInputInfo;
 		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 		vertexInputInfo.pNext = nullptr;
@@ -961,7 +1191,7 @@ void setupRealtimeRendering(bool reset = false) {
 		//	else
 		//		color = newColor
 		VkPipelineColorBlendAttachmentState colorBlendAttachment;
-		colorBlendAttachment.blendEnable = VK_FALSE;
+		colorBlendAttachment.blendEnable = VK_TRUE;
 		colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
 		colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 		colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
@@ -1065,8 +1295,10 @@ void setupRealtimeRendering(bool reset = false) {
 	/* PIPELINE BUILDING - END */
 
 	if (!reset) {
-		/* Allocation of VkBuffer to transfer CPU vertices onto GPU */
+		/* Allocation of VkBuffer to transfer CPU vertices/indices onto GPU */
 		sendPJModelToVRAM(pje::vertexBuffer, pje::indexBuffer, pje::loadedModels[pje::config::selectedPJModel]);
+		/* Allocation of PJImage to transfer CPU uncompressed texels onto GPU */
+		sendPJImageToVRAM(pje::rtAlbedo, pje::loadedModels[pje::config::selectedPJModel], 0);
 
 		/* TEMPORARY */
 		createPJBuffer(pje::storeBoneRefs, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "storeBoneRefs");
@@ -1084,6 +1316,7 @@ void setupRealtimeRendering(bool reset = false) {
 		linkDescriptorSetToBuffer(pje::context.descriptorSet, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, pje::uniformsBuffer);
 		linkDescriptorSetToBuffer(pje::context.descriptorSet, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, pje::storeBoneRefs);
 		linkDescriptorSetToBuffer(pje::context.descriptorSet, 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, pje::storeBoneMatrices);
+		linkDescriptorSetToImage(pje::context.descriptorSet, 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, pje::rtAlbedo, pje::context.texSampler);
 	}
 
 	/* Framebuffer => bridge buffer between CommandBuffer and Rendertargets/Image Views (Vulkan communication buffer) */
@@ -1548,13 +1781,18 @@ int pje::startVulkan() {
 	deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	deviceInfo.pNext = &coreDeviceFeature;
 	deviceInfo.flags = 0;
-	deviceInfo.queueCreateInfoCount = 1;										// number of VkDeviceQueueCreateInfo (1+ possible)
+	deviceInfo.queueCreateInfoCount = 1;									// number of VkDeviceQueueCreateInfo (1+ possible)
 	deviceInfo.pQueueCreateInfos = &deviceQueueInfo;
 	deviceInfo.enabledLayerCount = 0;
 	deviceInfo.ppEnabledLayerNames = nullptr;
 	deviceInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
 	deviceInfo.ppEnabledExtensionNames = deviceExtensions.data();
 	deviceInfo.pEnabledFeatures = nullptr;
+
+	if (pje::config::enableAnisotropy) {
+		pje::context.physicalDeviceFeatures.samplerAnisotropy = VK_TRUE;
+	}
+	coreDeviceFeature.features = pje::context.physicalDeviceFeatures;
 
 	/* Checking whether Swapchains are usable or not on physical device */
 	VkBool32 surfaceSupportsSwapchain = false;

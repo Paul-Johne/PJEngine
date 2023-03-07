@@ -8,7 +8,7 @@
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 
-#define DEFAULT_ASSIMP_FLAGS aiProcess_Triangulate | aiProcess_JoinIdenticalVertices
+#define DEFAULT_ASSIMP_FLAGS aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_FlipUVs
 #define INTERNET_ASSIMP_FLAGS aiProcess_Triangulate | aiProcess_SortByPType | aiProcess_GenUVCoords | aiProcess_OptimizeMeshes | aiProcess_ValidateDataStructure | aiProcess_GenNormals | aiProcess_CalcTangentSpace | aiProcess_LimitBoneWeights | aiProcess_JoinIdenticalVertices | aiProcess_FlipWindingOrder
 
 pje::ModelLoader::ModelLoader() : m_models(), m_modelPaths(), m_activeModels(0), m_centerModel(true), m_folderForModels("assets/models") {
@@ -134,7 +134,8 @@ pje::PJMesh pje::ModelLoader::convertMesh(aiMesh* mesh, const aiScene* pScene, b
 			PJVertex currentVertex(
 				{ mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z },	// glm::vec3 m_position
 				{ 1.0f, 1.0f, 0.0f },													// glm::vec3 m_color	
-				{ mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z }		// glm::vec3 m_normal
+				{ mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z },		// glm::vec3 m_normal
+				{ mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y}			// TODO(civ !!!) 
 			);
 
 			vertices.push_back(currentVertex);

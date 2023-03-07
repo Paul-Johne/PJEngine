@@ -27,6 +27,7 @@ namespace pje {
 		VkInstance											vulkanInstance					= VK_NULL_HANDLE;
 		VkSurfaceKHR										surface							= VK_NULL_HANDLE;
 		std::vector<VkPhysicalDevice>						physicalDevices;
+		VkPhysicalDeviceFeatures							physicalDeviceFeatures			= {};
 		VkDevice											logicalDevice					= VK_NULL_HANDLE;
 
 		// dynamically choosen by selectGPU()
@@ -54,6 +55,8 @@ namespace pje {
 		VkDescriptorSetLayout								descriptorSetLayout				= VK_NULL_HANDLE;
 		VkDescriptorPool									descriptorPool					= VK_NULL_HANDLE;
 		VkDescriptorSet										descriptorSet					= VK_NULL_HANDLE;
+
+		VkSampler											texSampler						= VK_NULL_HANDLE;
 
 		// 2 States: signaled, unsignaled
 		VkSemaphore											semaphoreSwapchainImageReceived	= VK_NULL_HANDLE;
@@ -93,11 +96,12 @@ namespace pje {
 		glm::vec3 m_position;
 		glm::vec3 m_color;
 		glm::vec3 m_normal;
+		glm::vec2 m_texCoord;
 		glm::vec2 m_boneRange;
 
 		PJVertex() = delete;
-		PJVertex(glm::vec3 position, glm::vec3 color, glm::vec3 normal, glm::uvec2 boneRange = glm::uvec2(0, 0)) :
-			m_position(position), m_color(color), m_normal(normal), m_boneRange(boneRange) {}	// initialization list
+		PJVertex(glm::vec3 position, glm::vec3 color, glm::vec3 normal, glm::vec2 texCoords = glm::vec2(0.0f, 0.0f), glm::uvec2 boneRange = glm::uvec2(0, 0)) :
+			m_position(position), m_color(color), m_normal(normal), m_texCoord(texCoords), m_boneRange(boneRange) {}	// initialization list
 		
 		~PJVertex()
 			{}
@@ -114,8 +118,8 @@ namespace pje {
 
 		/* integrated into vulkan pipeline */
 		/* array size equals amount of members in pje::PJVertex */
-		static std::array<VkVertexInputAttributeDescription, 4> getInputAttributeDesc() {
-			std::array<VkVertexInputAttributeDescription, 4> attributes;
+		static std::array<VkVertexInputAttributeDescription, 5> getInputAttributeDesc() {
+			std::array<VkVertexInputAttributeDescription, 5> attributes;
 			
 			attributes[0].location = 0;											// Vertex Input Buffer => layout(location = 0)
 			attributes[0].binding = 0;											// index of a VkVertexInputBindingDescription
@@ -134,8 +138,13 @@ namespace pje {
 
 			attributes[3].location = 3;
 			attributes[3].binding = 0;
-			attributes[3].format = VkFormat::VK_FORMAT_R32G32_UINT;
-			attributes[3].offset = offsetof(PJVertex, m_boneRange);				// OR: 9 * 4 Byte = 36
+			attributes[3].format = VkFormat::VK_FORMAT_R32G32_SFLOAT;			// vec2
+			attributes[3].offset = offsetof(PJVertex, m_texCoord);				// OR: 9 * 4 Byte = 36
+
+			attributes[4].location = 4;
+			attributes[4].binding = 0;
+			attributes[4].format = VkFormat::VK_FORMAT_R32G32_UINT;				// uvec2
+			attributes[4].offset = offsetof(PJVertex, m_boneRange);				// OR: 11 * 4 Bytes = 44
 
 			return attributes;
 		}
@@ -188,10 +197,10 @@ namespace pje {
 
 	/* #### PJBUFFER #### */
 	struct PJBuffer {
-		VkBuffer				buffer;
-		VkDeviceSize			size;
-		VkDeviceMemory			deviceMemory;
-		VkMemoryPropertyFlags	flags;
+		VkBuffer				buffer			= VK_NULL_HANDLE;
+		VkDeviceMemory			deviceMemory	= VK_NULL_HANDLE;
+		VkDeviceSize			size			= 0;
+		VkMemoryPropertyFlags	flags			= 0;
 	};
 	extern PJBuffer stagingBuffer;
 	
