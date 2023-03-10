@@ -1,6 +1,8 @@
 /* Ignores header if not needed after #include */
 	#pragma once
 
+	#include <cmath>
+	#include <algorithm>
 	#include <iostream>
 	#include <fstream>
 	#include <string>

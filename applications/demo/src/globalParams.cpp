@@ -71,6 +71,6 @@ pje::PJBuffer pje::storeBoneRefs = {};
 pje::PJBuffer pje::storeBoneMatrices = {};
 
 /* Vulkan "Texture Units" */
-pje::PJImage pje::rtAlbedo = {};
+pje::PJImage pje::texAlbedo = {};
 pje::PJImage pje::rtMsaa = {};
 pje::PJImage pje::rtDepth = {};

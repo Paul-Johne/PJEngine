@@ -15,7 +15,7 @@ namespace pje::config {
 
 	inline constexpr	VkFormat						outputFormat					= VkFormat::VK_FORMAT_B8G8R8A8_UNORM;								// Intended default VkFormat : 44
 	inline constexpr	VkFormat						depthFormat						= VkFormat::VK_FORMAT_D32_SFLOAT;									// 32 bits for depth component
-	inline constexpr	float							clearValueDefault[4]			= { 0.0f, 0.0f, 0.0f, 1.0f };										// Default Background
+	inline constexpr	float							clearValueDefault[4]			= { 0.14f, 0.11f, 0.10f, 1.0f };										// Default Background
 
 	inline constexpr	VkSampleCountFlagBits			plainImageFactor				= VkSampleCountFlagBits::VK_SAMPLE_COUNT_1_BIT;
 	inline constexpr	VkSampleCountFlagBits			msaaFactor						= VkSampleCountFlagBits::VK_SAMPLE_COUNT_4_BIT;
@@ -28,7 +28,7 @@ namespace pje::config {
 	inline constexpr	size_t							selectedPJModel					= 2;
 	inline constexpr	float							antiFbxScale					= 0.01f;
 
-	inline const		glm::mat4						initCameraPose					= glm::inverse(glm::lookAt(	glm::vec3(0.0f, 1.0f, 2.0f), 
+	inline const		glm::mat4						initCameraPose					= glm::inverse(glm::lookAt(	glm::vec3(0.0f, 0.5f, 1.0f) * 4.0f, 
 																													glm::vec3(0.0f, 0.0f, 0.0f), 
 																													glm::vec3(0.0f, 1.0f, 0.0f)));
 	inline constexpr	float							nearPlane						= 0.1f;

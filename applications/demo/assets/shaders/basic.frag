@@ -20,7 +20,7 @@ void main() {
 	float cosTheta = max(n.z, 0.0); // n.z * 1 <=> dot(n, vec3(0.0, 0.0, 1.0))
 
 	// color = vec4(vIn.fragColor * cosTheta, 1.0);
-	color = texture(texSampler, vIn.texCoord).bgra;
+	color = texture(texSampler, vIn.texCoord);
 
 	/* Discards current fully transparent fragment to avoid wrong color blending */
 	if (color.a == 0.0) {

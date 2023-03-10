@@ -354,7 +354,7 @@ VkSampler createTexSampler() {
 	texSamplerInfo.mipmapMode				= VK_SAMPLER_MIPMAP_MODE_LINEAR;			// TODO(for later use)
 	texSamplerInfo.mipLodBias				= 0.0f;
 	texSamplerInfo.minLod					= 0.0f;
-	texSamplerInfo.maxLod					= 0.0f;
+	texSamplerInfo.maxLod					= VK_LOD_CLAMP_NONE;						// all mipmap levels ought to be used
 
 	vkCreateSampler(pje::context.logicalDevice, &texSamplerInfo, nullptr, &sampler);
 
@@ -362,16 +362,19 @@ VkSampler createTexSampler() {
 }
 
 /* Creates and binds VkImage and VkMemory of some pje::PJImage for SAMPLING */
-void createPJImage(pje::PJImage& rawImage, pje::TextureInfo textureInfoSize) {
+void createPJImage(pje::PJImage& rawImage, unsigned int baseWidth, unsigned int baseHeight, bool genMipmaps = false) {
+	rawImage.mipCount = genMipmaps ? std::max<unsigned int>(std::log2(baseWidth) + 1, std::log2(baseHeight) + 1) : 1;
+	
 	rawImage.image = createVkImage(
-		pje::config::outputFormat, 
-		VkExtent3D{ 
-			static_cast<unsigned int>(textureInfoSize.x_width), 
-			static_cast<unsigned int>(textureInfoSize.y_height), 
-			1 
+		pje::config::outputFormat,
+		VkExtent3D{
+			baseWidth,
+			baseHeight,
+			1
 		},
 		pje::config::plainImageFactor,
-		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+		rawImage.mipCount
 	);
 	rawImage.deviceMemory = allocateVkImageMemory(
 		rawImage.image,
@@ -387,10 +390,15 @@ void createPJImage(pje::PJImage& rawImage, pje::TextureInfo textureInfoSize) {
 	viewInfo.image = rawImage.image;
 	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	viewInfo.format = pje::config::outputFormat;
-	viewInfo.components = VkComponentMapping{ VK_COMPONENT_SWIZZLE_IDENTITY };
+	viewInfo.components = VkComponentMapping{ 
+		VK_COMPONENT_SWIZZLE_B, 
+		VK_COMPONENT_SWIZZLE_G, 
+		VK_COMPONENT_SWIZZLE_R, 
+		VK_COMPONENT_SWIZZLE_A 
+	};
 	viewInfo.subresourceRange = VkImageSubresourceRange{
 		VK_IMAGE_ASPECT_COLOR_BIT,
-		0, 1, 0, 1					// mipLevel and array details
+		0, rawImage.mipCount, 0, 1							// mipLevel and array details
 	};
 
 	vkCreateImageView(pje::context.logicalDevice, &viewInfo, nullptr, &rawImage.imageView);
@@ -451,10 +459,12 @@ void copyToLocalDeviceImage(const void* data, pje::TextureInfo texInfo, VkImage 
 	VkImageSubresourceRange imageRange{
 		VK_IMAGE_ASPECT_COLOR_BIT,		// aspectMask
 		0,								// baseMipLevel
-		1,								// levelCount
+		VK_REMAINING_MIP_LEVELS,		// levelCount => VK_REMAINING_MIP_LEVELS are all including baseMipLevel
 		0,								// baseArrayLayer
 		1								// layerCount
 	};
+
+	/* srcAccessMask => FLUSH | dstAccessMask => INVALIDATE */
 
 	VkImageMemoryBarrier memBarrier;
 	memBarrier.sType				= VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -466,7 +476,7 @@ void copyToLocalDeviceImage(const void* data, pje::TextureInfo texInfo, VkImage 
 	memBarrier.image				= dst;
 	memBarrier.subresourceRange		= imageRange;
 	memBarrier.srcAccessMask		= 0;										// sync cache access (what must happen before the barrier in current pipeline stage)
-	memBarrier.dstAccessMask		= VK_ACCESS_TRANSFER_WRITE_BIT;				// sync cache access (which operation must wait for the resource)
+	memBarrier.dstAccessMask		= 0;										// sync cache access (which operation must wait for the resource)
 	
 	/* Transition 1/2 */
 	vkCmdPipelineBarrier(
@@ -502,12 +512,12 @@ void copyToLocalDeviceImage(const void* data, pje::TextureInfo texInfo, VkImage 
 	memBarrier.oldLayout		= VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	memBarrier.newLayout		= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	memBarrier.srcAccessMask	= VK_ACCESS_TRANSFER_WRITE_BIT;
-	memBarrier.dstAccessMask	= VK_ACCESS_SHADER_READ_BIT;
+	memBarrier.dstAccessMask	= 0;
 
 	vkCmdPipelineBarrier(
 		stagingCommandBuffer,
 		VK_PIPELINE_STAGE_TRANSFER_BIT,
-		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,	// which pipeline state has to wait until the resource is available in newLayout
+		VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,	// which pipeline state has to wait until the resource is available in newLayout
 		0,
 		0, nullptr,
 		0, nullptr,
@@ -531,20 +541,199 @@ void copyToLocalDeviceImage(const void* data, pje::TextureInfo texInfo, VkImage 
 	/* Submission of VkCommandBuffer onto VkQueue */
 	vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, pje::context.fenceCopiedBuffer);
 
-	/* Waits until CommandBuffers were submitted */
+	/* Waits until CommandBuffers were submitted => "Flush and Invalidate all"/complete memory barrier */
+	vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer, VK_TRUE, numeric_limits<uint64_t>::max());
+	vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer);
+}
+
+/* Takes [VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL]-Images and produces ALL possible mipmap textures */
+void generateMipmaps(pje::PJImage& uploadedTexture, unsigned int baseWidth, unsigned int baseHeight) {
+	VkOffset3D sourceResolution{ baseWidth, baseHeight, 1 };
+	VkOffset3D targetResolution{};
+
+	static VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+
+	if (commandBuffer == VK_NULL_HANDLE) {
+		VkCommandBufferAllocateInfo commandBufferAllocateInfo;
+		commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		commandBufferAllocateInfo.pNext = nullptr;
+		commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		commandBufferAllocateInfo.commandPool = pje::context.commandPool;
+		commandBufferAllocateInfo.commandBufferCount = 1;
+
+		vkAllocateCommandBuffers(pje::context.logicalDevice, &commandBufferAllocateInfo, &commandBuffer);
+	}
+	else {
+		vkResetCommandBuffer(commandBuffer, 0);
+	}
+
+	VkCommandBufferBeginInfo commandInfo{};
+	commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	vkBeginCommandBuffer(commandBuffer, &commandInfo);
+
+	/* Assumption : all mipmap levels are in SHADER_READ_OPTIMAL layout */
+	for (unsigned int level = 0; level < uploadedTexture.mipCount - 1; ++level) {
+		unsigned int readLevel{ level };
+		unsigned int writeLevel{ level + 1 };
+
+		VkImageSubresourceRange imageRangeSrc{
+			VK_IMAGE_ASPECT_COLOR_BIT,		// aspectMask
+			readLevel,						// baseMipLevel
+			1,								// levelCount
+			0,								// baseArrayLayer
+			1								// layerCount
+		};
+
+		VkImageSubresourceRange imageRangeDst{
+			VK_IMAGE_ASPECT_COLOR_BIT,		// aspectMask
+			writeLevel,						// baseMipLevel
+			1,								// levelCount
+			0,								// baseArrayLayer
+			1								// layerCount
+		};
+
+		/* 2 barriers : one for read and one for write */
+		std::array<VkImageMemoryBarrier,2> memBarrier;
+		memBarrier[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		memBarrier[0].pNext = nullptr;
+		memBarrier[0].oldLayout = level == 0 ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		memBarrier[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		memBarrier[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		memBarrier[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		memBarrier[0].image = uploadedTexture.image;
+		memBarrier[0].subresourceRange = imageRangeSrc;
+		memBarrier[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;			// when cache writing => flush to vram
+		memBarrier[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;			// when cache read => invalidate
+
+		memBarrier[1].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		memBarrier[1].pNext = nullptr;
+		memBarrier[1].oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		memBarrier[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		memBarrier[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		memBarrier[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		memBarrier[1].image = uploadedTexture.image;
+		memBarrier[1].subresourceRange = imageRangeDst;
+		memBarrier[1].srcAccessMask = 0;
+		memBarrier[1].dstAccessMask = 0;
+
+		/* Transition */
+		vkCmdPipelineBarrier(
+			commandBuffer,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,		// next transfer stage (next iteration)
+			0,									// 0 || VK_DEPENDENCY_BY_REGION_BIT
+			0, nullptr,							// Memory Barriers
+			0, nullptr,							// Buffer Memory Barriers
+			2, memBarrier.data()				// Image Memory Barriers
+		);
+
+		
+		targetResolution.x = std::max<int32_t>(sourceResolution.x / 2, 1);
+		targetResolution.y = std::max<int32_t>(sourceResolution.y / 2, 1);
+		targetResolution.z = 1;
+
+		VkImageBlit blit{ 
+			VkImageSubresourceLayers { VK_IMAGE_ASPECT_COLOR_BIT, readLevel, 0, 1 },
+			{ {0, 0, 0}, {sourceResolution} },
+			VkImageSubresourceLayers { VK_IMAGE_ASPECT_COLOR_BIT, writeLevel, 0, 1 },
+			{ {0, 0, 0}, {targetResolution} }
+		};
+
+		vkCmdBlitImage(
+			commandBuffer, 
+			uploadedTexture.image, 
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 
+			uploadedTexture.image, 
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+			1, &blit,
+			VK_FILTER_LINEAR
+		);
+
+		sourceResolution = targetResolution;
+	}
+
+	std::array<VkImageMemoryBarrier, 2> memBarrier;
+
+	VkImageSubresourceRange imageRange{
+			VK_IMAGE_ASPECT_COLOR_BIT,		// aspectMask
+			0,								// baseMipLevel
+			uploadedTexture.mipCount - 1,	// levelCount
+			0,								// baseArrayLayer
+			1								// layerCount
+	};
+
+	memBarrier[0].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	memBarrier[0].pNext = nullptr;
+	memBarrier[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	memBarrier[0].newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	memBarrier[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memBarrier[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memBarrier[0].image = uploadedTexture.image;
+	memBarrier[0].subresourceRange = imageRange;
+	memBarrier[0].srcAccessMask = 0;
+	memBarrier[0].dstAccessMask = 0;
+
+	imageRange.baseMipLevel = uploadedTexture.mipCount - 1;
+	imageRange.levelCount = 1;
+
+	memBarrier[1].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	memBarrier[1].pNext = nullptr;
+	memBarrier[1].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	memBarrier[1].newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	memBarrier[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memBarrier[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memBarrier[1].image = uploadedTexture.image;
+	memBarrier[1].subresourceRange = imageRange;
+	memBarrier[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	memBarrier[1].dstAccessMask = 0;
+
+	vkCmdPipelineBarrier(
+		commandBuffer,
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,	// next transfer stage (next iteration)
+		0,										// 0 || VK_DEPENDENCY_BY_REGION_BIT
+		0, nullptr,								// Memory Barriers
+		0, nullptr,								// Buffer Memory Barriers
+		2, memBarrier.data()					// Image Memory Barriers
+	);
+
+	vkEndCommandBuffer(commandBuffer);
+
+	VkSubmitInfo submitInfo;
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext = nullptr;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffer;
+	submitInfo.waitSemaphoreCount = 0;
+	submitInfo.pWaitSemaphores = nullptr;
+	submitInfo.pWaitDstStageMask = nullptr;
+	submitInfo.signalSemaphoreCount = 0;
+	submitInfo.pSignalSemaphores = nullptr;
+
+	/* Submission of VkCommandBuffer onto VkQueue */
+	vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, pje::context.fenceCopiedBuffer);
+
+	/* Waits until CommandBuffers were submitted => "Flush and Invalidate all"/complete memory barrier */
 	vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer, VK_TRUE, numeric_limits<uint64_t>::max());
 	vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer);
 }
 
 /* Sends data on RAM as PJImage to [VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT]-VRAM */
-void sendPJImageToVRAM(pje::PJImage& rawImageBuffer, const pje::PJModel& objectTarget, size_t indexOfPJModelTexture) {
-	createPJImage(rawImageBuffer, objectTarget.m_textureInfos[indexOfPJModelTexture]);
+void uploadTextureToVRAM(pje::PJImage& rawImageBuffer, const pje::PJModel& objectTarget, size_t indexOfPJModelTexture, bool genMipmaps = false) {
+	auto baseWidth{ static_cast<unsigned int>(objectTarget.m_textureInfos[indexOfPJModelTexture].x_width) };
+	auto baseHeight{ static_cast<unsigned int>(objectTarget.m_textureInfos[indexOfPJModelTexture].y_height) };
+	
+	createPJImage(rawImageBuffer, baseWidth, baseHeight, genMipmaps);
 	
 	copyToLocalDeviceImage(
 		objectTarget.m_uncompressedTextures[indexOfPJModelTexture].data(), 
 		objectTarget.m_textureInfos[indexOfPJModelTexture], 
 		rawImageBuffer.image
 	);
+
+	generateMipmaps(rawImageBuffer, baseWidth, baseHeight);
 
 	if (pje::context.texSampler == VK_NULL_HANDLE) {
 		pje::context.texSampler = createTexSampler();
@@ -801,9 +990,9 @@ void pje::cleanupRealtimeRendering(bool reset) {
 	if (!reset) {
 		vkDestroySampler(pje::context.logicalDevice, pje::context.texSampler, nullptr);
 
-		vkDestroyImageView(pje::context.logicalDevice, pje::rtAlbedo.imageView, nullptr);
-		vkFreeMemory(pje::context.logicalDevice, pje::rtAlbedo.deviceMemory, nullptr);
-		vkDestroyImage(pje::context.logicalDevice, pje::rtAlbedo.image, nullptr);
+		vkDestroyImageView(pje::context.logicalDevice, pje::texAlbedo.imageView, nullptr);
+		vkFreeMemory(pje::context.logicalDevice, pje::texAlbedo.deviceMemory, nullptr);
+		vkDestroyImage(pje::context.logicalDevice, pje::texAlbedo.image, nullptr);
 
 		vkDestroyDescriptorPool(pje::context.logicalDevice, pje::context.descriptorPool, nullptr);			// also does vkFreeDescriptorSets() automatically
 
@@ -1191,7 +1380,7 @@ void setupRealtimeRendering(bool reset = false) {
 		//	else
 		//		color = newColor
 		VkPipelineColorBlendAttachmentState colorBlendAttachment;
-		colorBlendAttachment.blendEnable = VK_TRUE;
+		colorBlendAttachment.blendEnable = VK_FALSE;
 		colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
 		colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 		colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
@@ -1298,7 +1487,7 @@ void setupRealtimeRendering(bool reset = false) {
 		/* Allocation of VkBuffer to transfer CPU vertices/indices onto GPU */
 		sendPJModelToVRAM(pje::vertexBuffer, pje::indexBuffer, pje::loadedModels[pje::config::selectedPJModel]);
 		/* Allocation of PJImage to transfer CPU uncompressed texels onto GPU */
-		sendPJImageToVRAM(pje::rtAlbedo, pje::loadedModels[pje::config::selectedPJModel], 0);
+		uploadTextureToVRAM(pje::texAlbedo, pje::loadedModels[pje::config::selectedPJModel], 0, true);
 
 		/* TEMPORARY */
 		createPJBuffer(pje::storeBoneRefs, 1, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, "storeBoneRefs");
@@ -1316,7 +1505,7 @@ void setupRealtimeRendering(bool reset = false) {
 		linkDescriptorSetToBuffer(pje::context.descriptorSet, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, pje::uniformsBuffer);
 		linkDescriptorSetToBuffer(pje::context.descriptorSet, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, pje::storeBoneRefs);
 		linkDescriptorSetToBuffer(pje::context.descriptorSet, 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, pje::storeBoneMatrices);
-		linkDescriptorSetToImage(pje::context.descriptorSet, 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, pje::rtAlbedo, pje::context.texSampler);
+		linkDescriptorSetToImage(pje::context.descriptorSet, 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, pje::texAlbedo, pje::context.texSampler);
 	}
 
 	/* Framebuffer => bridge buffer between CommandBuffer and Rendertargets/Image Views (Vulkan communication buffer) */
@@ -1981,7 +2170,7 @@ void drawFrameOnSurface() {
 			numeric_limits<uint64_t>::max()
 		);
 		if (pje::context.result != VK_SUCCESS) {
-			cout << "Error at vkWaitForFences" << endl;
+			//cout << "Error at vkWaitForFences" << endl;
 			return;
 		}
 

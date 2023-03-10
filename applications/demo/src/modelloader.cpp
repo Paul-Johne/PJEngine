@@ -135,7 +135,7 @@ pje::PJMesh pje::ModelLoader::convertMesh(aiMesh* mesh, const aiScene* pScene, b
 				{ mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z },	// glm::vec3 m_position
 				{ 1.0f, 1.0f, 0.0f },													// glm::vec3 m_color	
 				{ mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z },		// glm::vec3 m_normal
-				{ mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y}			// TODO(civ !!!) 
+				{ mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y}			// TODO(tertiary/ternary expression!!!) 
 			);
 
 			vertices.push_back(currentVertex);

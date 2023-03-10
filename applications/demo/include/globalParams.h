@@ -185,8 +185,8 @@ namespace pje {
 	class PJModel {
 	public:
 		std::vector<PJMesh>							m_meshes;
-		std::vector<std::vector<unsigned char>>		m_uncompressedTextures;
-		std::vector<TextureInfo>					m_textureInfos;
+		std::vector<std::vector<unsigned char>>		m_uncompressedTextures;		// same index
+		std::vector<TextureInfo>					m_textureInfos;				// same index
 		std::string									m_modelPath;
 		bool										m_centered;
 
@@ -216,8 +216,9 @@ namespace pje {
 		VkImage			image			= VK_NULL_HANDLE;
 		VkDeviceMemory	deviceMemory	= VK_NULL_HANDLE;
 		VkImageView		imageView		= VK_NULL_HANDLE;
+		unsigned int	mipCount		= 0;
 	};
-	extern PJImage rtAlbedo;
+	extern PJImage texAlbedo;
 	extern PJImage rtMsaa;
 	extern PJImage rtDepth;
 }
