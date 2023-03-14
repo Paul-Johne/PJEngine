@@ -11,6 +11,8 @@ set(DEMO_SOURCES
 
     "${CMAKE_CURRENT_SOURCE_DIR}/include/debugUtils.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/vef.h"
+
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/engineGui.h"
     ### Source Files ###
     "${CMAKE_CURRENT_SOURCE_DIR}/src/app.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/globalFuns.cpp"
@@ -18,6 +20,8 @@ set(DEMO_SOURCES
 
     "${CMAKE_CURRENT_SOURCE_DIR}/src/globalParams.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/vef.cpp"
+
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/engineGui.cpp"
 )
 
 set(SHADER_SOURCES
@@ -28,7 +32,7 @@ set(SHADER_SOURCES
 # generates demo.exe
 add_executable(demo ${DEMO_SOURCES})
 
-# changes Cpp for this target (top level already sets Cpp Version to 11)
+# changes Cpp for this target
 set_property(
     TARGET 
         demo 

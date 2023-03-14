@@ -15,6 +15,7 @@
 	#include <globalParams.h>
 	#include <vef.h>
 	#include <debugUtils.h>
+	#include <engineGui.h>
 
 namespace pje {
 	std::vector<char> readSpirvFile(const std::string& filename);
@@ -30,7 +31,7 @@ namespace pje {
 	int startVulkan();
 	void stopVulkan();
 
-	void loopVisualizationOf(GLFWwindow* window);
+	void loopVisualizationOf(GLFWwindow* window, std::unique_ptr<pje::EngineGui> const& gui = std::unique_ptr<pje::EngineGui>{});
 }
 
 void setObjectNames(const pje::Context& context);

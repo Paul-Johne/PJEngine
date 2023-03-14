@@ -7,11 +7,18 @@ int main() {
 
 	/* Error Handler */
 	int res;
+
 	/* 3D Objects Loader */
 	std::unique_ptr<pje::ModelLoader> modelLoader(std::make_unique<pje::ModelLoader>());
+
 	/* Append debugMesh and pje::modelLoader.m_models to loadedModels */
 	pje::loadedModels.insert(pje::loadedModels.end(), modelLoader->m_models.begin(), modelLoader->m_models.end());
 	modelLoader->m_models.clear();
+
+	/* EngineGui Handle */
+#ifdef ACTIVATE_ENGINE_GUI
+	std::unique_ptr<pje::EngineGui> gui(std::make_unique<pje::EngineGui>());
+#endif
 
 	try {
 		pje::context.startTimePoint = std::chrono::steady_clock::now();
@@ -30,7 +37,15 @@ int main() {
 			return res;
 		}
 
+#ifdef ACTIVATE_ENGINE_GUI
+		gui->init(pje::context.window);
+		pje::loopVisualizationOf(pje::context.window, gui);
+		gui->shutdown();
+#endif
+
+#ifndef ACTIVATE_ENGINE_GUI
 		pje::loopVisualizationOf(pje::context.window);
+#endif
 
 		pje::stopVulkan();
 		pje::stopGlfw3();

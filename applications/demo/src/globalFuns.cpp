@@ -221,11 +221,11 @@ void copyToLocalDeviceBuffer(const void* data, VkDeviceSize dataSize, VkBuffer d
 	submitInfo.pSignalSemaphores = nullptr;
 
 	/* Submission of VkCommandBuffer onto VkQueue */
-	vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, pje::context.fenceCopiedBuffer);
+	vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, pje::context.fenceBasic);
 
 	/* Waits until CommandBuffers were submitted */
-	vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer, VK_TRUE, numeric_limits<uint64_t>::max());
-	vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer);
+	vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceBasic, VK_TRUE, numeric_limits<uint64_t>::max());
+	vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceBasic);
 }
 
 /* Sends data on RAM as PJBuffer to [VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT]-VRAM */
@@ -539,11 +539,11 @@ void copyToLocalDeviceImage(const void* data, pje::TextureInfo texInfo, VkImage 
 	submitInfo.pSignalSemaphores = nullptr;
 
 	/* Submission of VkCommandBuffer onto VkQueue */
-	vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, pje::context.fenceCopiedBuffer);
+	vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, pje::context.fenceBasic);
 
-	/* Waits until CommandBuffers were submitted => "Flush and Invalidate all"/complete memory barrier */
-	vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer, VK_TRUE, numeric_limits<uint64_t>::max());
-	vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer);
+	/* Waits until CommandBuffers were submitted => "Flush and Invalidate all" / complete memory barrier */
+	vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceBasic, VK_TRUE, numeric_limits<uint64_t>::max());
+	vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceBasic);
 }
 
 /* Takes [VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL]-Images and produces ALL possible mipmap textures */
@@ -713,11 +713,11 @@ void generateMipmaps(pje::PJImage& uploadedTexture, unsigned int baseWidth, unsi
 	submitInfo.pSignalSemaphores = nullptr;
 
 	/* Submission of VkCommandBuffer onto VkQueue */
-	vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, pje::context.fenceCopiedBuffer);
+	vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, pje::context.fenceBasic);
 
 	/* Waits until CommandBuffers were submitted => "Flush and Invalidate all"/complete memory barrier */
-	vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer, VK_TRUE, numeric_limits<uint64_t>::max());
-	vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceCopiedBuffer);
+	vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceBasic, VK_TRUE, numeric_limits<uint64_t>::max());
+	vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceBasic);
 }
 
 /* Sends data on RAM as PJImage to [VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT]-VRAM */
@@ -1022,7 +1022,7 @@ void pje::cleanupRealtimeRendering(bool reset) {
 }
 
 /* Recording of context.commandBuffers - Declares what has to be rendered later */
-void recordRenderCommands(pje::PJModel& renderable, uint32_t numberOfCommandBuffer) {
+void recordRenderCommands(pje::PJModel& renderable, uint32_t numberOfCommandBuffer, std::unique_ptr<pje::EngineGui> const& gui = std::unique_ptr<pje::EngineGui>{}) {
 	// Defines CommandBuffer behavior
 	VkCommandBufferBeginInfo commandBufferBeginInfo;
 	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1089,8 +1089,6 @@ void recordRenderCommands(pje::PJModel& renderable, uint32_t numberOfCommandBuff
 			nullptr
 		);
 
-		// TODO ===> FOR LOOP - START
-
 		vkCmdBindVertexBuffers(pje::context.commandBuffers[i], 0, 1, &pje::vertexBuffer.buffer, offsets.data());
 		vkCmdBindIndexBuffer(pje::context.commandBuffers[i], pje::indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
@@ -1098,6 +1096,10 @@ void recordRenderCommands(pje::PJModel& renderable, uint32_t numberOfCommandBuff
 		for (const auto& mesh : renderable.m_meshes) {
 			vkCmdDrawIndexed(pje::context.commandBuffers[i], mesh.m_indices.size(), 1, mesh.m_offsetIndices, mesh.m_offsetVertices, 0);
 		}
+
+#ifdef ACTIVATE_ENGINE_GUI
+		gui->drawGui(i);
+#endif
 
 		vkCmdEndRenderPass(pje::context.commandBuffers[i]);
 
@@ -1110,7 +1112,7 @@ void recordRenderCommands(pje::PJModel& renderable, uint32_t numberOfCommandBuff
 	}
 }
 
-/* Setup for Swapchain, Renderpass, Pipeline and CommandBufferPool */
+/* Setup for Swapchain, Renderpass, Pipeline and CommandBuffer Recording */
 void setupRealtimeRendering(bool reset = false) {
 	/* swapchainInfo for building a Swapchain */
 	VkSwapchainCreateInfoKHR swapchainInfo;
@@ -1182,7 +1184,7 @@ void setupRealtimeRendering(bool reset = false) {
 			throw runtime_error("Error at vkCreateImageView");
 		}
 	}
-
+	/* Creates Rendertargets Depth and MSAA */
 	createDepthAndMSAA(VkExtent3D{ pje::context.windowWidth, pje::context.windowHeight, 1 });
 
 	/* VkCommandPool holds CommandBuffer which are necessary to tell Vulkan what to do */
@@ -1402,7 +1404,7 @@ void setupRealtimeRendering(bool reset = false) {
 		/* Declaring VkDescriptorSetLayout for Pipeline */
 		createDescriptorSetLayout(pje::context.descriptorSetLayout);
 
-		// pipelineLayoutInfo declares LAYOUTS and UNIFORMS for compiled shader code
+		// pipelineLayoutInfo declares LAYOUTS and UNIFORMS (s. VkDescriptorSet) for compiled shader code
 		VkPipelineLayoutCreateInfo pipelineLayoutInfo;
 		pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 		pipelineLayoutInfo.pNext = nullptr;
@@ -1552,8 +1554,8 @@ void setupRealtimeRendering(bool reset = false) {
 		throw runtime_error("Error at setupRealtimeRendering::vkAllocateCommandBuffers");
 	}
 	
-	/* Record CommandBuffers designated to rendering */
-	recordRenderCommands(pje::loadedModels[pje::config::selectedPJModel], pje::context.numberOfImagesInSwapchain);
+	/* Record CommandBuffers designated to rendering => here only ONCE */
+	// recordRenderCommands(pje::loadedModels[pje::config::selectedPJModel], pje::context.numberOfImagesInSwapchain);
 }
 
 /* Callback for glfwSetWindowSizeCallback */
@@ -2045,8 +2047,8 @@ int pje::startVulkan() {
 	VkFenceCreateInfo fenceInfo;
 	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceInfo.pNext = nullptr;
-	fenceInfo.flags = 0;
-	vkCreateFence(pje::context.logicalDevice, &fenceInfo, nullptr, &pje::context.fenceCopiedBuffer);
+	fenceInfo.flags = 0;		// unsignaled
+	vkCreateFence(pje::context.logicalDevice, &fenceInfo, nullptr, &pje::context.fenceBasic);
 
 	setupRealtimeRendering();
 
@@ -2071,7 +2073,7 @@ int pje::startVulkan() {
 	/* Creates signaled fence for image rendering */
 	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceInfo.pNext = nullptr;
-	fenceInfo.flags = VkFenceCreateFlagBits::VK_FENCE_CREATE_SIGNALED_BIT;
+	fenceInfo.flags = 0;
 
 	pje::context.result = vkCreateFence(pje::context.logicalDevice, &fenceInfo, nullptr, &pje::context.fenceRenderFinished);
 	if (pje::context.result != VK_SUCCESS) {
@@ -2094,7 +2096,7 @@ void pje::stopVulkan() {
 
 	/* vkDestroy bottom-up */
 	vkDestroyFence(pje::context.logicalDevice, pje::context.fenceRenderFinished, nullptr);
-	vkDestroyFence(pje::context.logicalDevice, pje::context.fenceCopiedBuffer, nullptr);
+	vkDestroyFence(pje::context.logicalDevice, pje::context.fenceBasic, nullptr);
 	vkDestroySemaphore(pje::context.logicalDevice, pje::context.semaphoreSwapchainImageReceived, nullptr);
 	vkDestroySemaphore(pje::context.logicalDevice, pje::context.semaphoreRenderingFinished, nullptr);
 
@@ -2134,7 +2136,9 @@ void updateMatrices() {
 		glm::vec3(0.0f, -1.0f, 0.0f)
 	);
 
-	pje::uniforms.viewMatrix = glm::inverse(pje::context.cameraPose);
+	pje::uniforms.viewMatrix = glm::inverse(
+		pje::context.cameraPose					// current cameraPose => TODO(modifiable via ImGui)
+	);
 
 	pje::uniforms.projectionMatrix = glm::perspective(
 		glm::radians(60.0f),
@@ -2161,31 +2165,7 @@ void updateMatrices() {
  */
 void drawFrameOnSurface() {
 	if (!pje::context.isWindowMinimized) {
-		/* CPU waits here for signaled fence(s)*/
-		pje::context.result = vkWaitForFences(
-			pje::context.logicalDevice,
-			1,
-			&pje::context.fenceRenderFinished,
-			VK_TRUE,
-			numeric_limits<uint64_t>::max()
-		);
-		if (pje::context.result != VK_SUCCESS) {
-			//cout << "Error at vkWaitForFences" << endl;
-			return;
-		}
-
-		/* Unsignals fence(s) */
-		pje::context.result = vkResetFences(
-			pje::context.logicalDevice,
-			1,
-			&pje::context.fenceRenderFinished
-		);
-		if (pje::context.result != VK_SUCCESS) {
-			cout << "Error at vkResetFences" << endl;
-			return;
-		}
-
-		uint32_t imageIndex;
+		uint32_t imageIndex;								// current imageIndex of swapchain
 		pje::context.result = vkAcquireNextImageKHR(		// async => GPU can already compute without having a rendertarget
 			pje::context.logicalDevice,
 			pje::context.swapchain,
@@ -2207,7 +2187,7 @@ void drawFrameOnSurface() {
 		submitInfo.pNext = nullptr;
 		submitInfo.waitSemaphoreCount = 1;
 		submitInfo.pWaitSemaphores = &pje::context.semaphoreSwapchainImageReceived;
-		submitInfo.pWaitDstStageMask = waitStageMask.data();						// wait at this point in the pipeline until pWaitSemaphore is signaled
+		submitInfo.pWaitDstStageMask = waitStageMask.data();						// wait at this pipeline stage until pWaitSemaphore is signaled
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &pje::context.commandBuffers[imageIndex];
 		submitInfo.signalSemaphoreCount = 1;
@@ -2225,6 +2205,13 @@ void drawFrameOnSurface() {
 			cout << "Error at vkQueueSubmit" << endl;
 			return;
 		}
+
+		/* CPU waits here until all fences are signaled */
+		vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceRenderFinished, VK_TRUE, numeric_limits<uint64_t>::max());
+		/* Unsignals fence(s) */
+		vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceRenderFinished);
+		/* Resets current pje::context.commandBuffer in question */
+		vkResetCommandBuffer(pje::context.commandBuffers[imageIndex], 0);
 
 		/* VkSwapchainKHR holds a reference to a surface to present on */
 		VkPresentInfoKHR presentInfo;
@@ -2245,16 +2232,26 @@ void drawFrameOnSurface() {
 	}
 }
 
-/* Renders a new frame */
+/* Renders a new frame for current setup */
 /* Loop :
 *  1) Acquire next swapchain image related to some logical device
 *  2) Submit CommandBuffer designated for image of swapchain to VkQueue => Rendering
 *  3) Present result of VkQueue of logical device
 */
-void pje::loopVisualizationOf(GLFWwindow* window) {
+void pje::loopVisualizationOf(GLFWwindow* window, std::unique_ptr<pje::EngineGui> const& gui) {
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
+
+#ifdef ACTIVATE_ENGINE_GUI
+		gui->nextGuiFrame();
+#endif
+
+		/* Code for perspective of the camera into the scene */
 		updateMatrices();
+
+		/* Record pje::context.commandBuffer(s) designated to rendering */
+		recordRenderCommands(pje::loadedModels[pje::config::selectedPJModel], pje::context.numberOfImagesInSwapchain);
+		/* TODO => Resets pje::context.commandBuffer(s) after pje::context.commandBuffer(s) submission */
 		drawFrameOnSurface();
 	}
 }
