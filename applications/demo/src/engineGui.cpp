@@ -23,7 +23,7 @@ void pje::EngineGui::init(GLFWwindow* window) {
 	ImGui::StyleColorsDark();
 
 	/* ... */
-	this->m_io = ImGui::GetIO();
+	this->m_io = &ImGui::GetIO();
 
 	/* VkDescriptorPool for Imgui */
 	auto poolSizes = std::array{
@@ -106,20 +106,22 @@ void pje::EngineGui::init(GLFWwindow* window) {
 void pje::EngineGui::nextGuiFrame() {
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
+	
 	ImGui::NewFrame();
-
-	// ImGui::ShowDemoWindow(); // => requires imgui_demo.cpp
-
 	ImGui::Begin("EngineGui");
 	ImGui::Text("How am I supposed to change the camera position?");
-	ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / this->m_io.Framerate, this->m_io.Framerate);
+	ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / this->m_io->Framerate, this->m_io->Framerate);
 	ImGui::End();
+
+	//ImGui::NewFrame();
+	//ImGui::ShowDemoWindow(); // => requires imgui_demo.cpp
+	//ImGui::EndFrame();
 }
 
 /* Has to be invoked once for each frame | each frame MUST have a new VkCommandBuffer recording */
 void pje::EngineGui::drawGui(uint32_t swapchainImageIndex) {
 	ImGui::Render();
-	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), pje::context.commandBuffers[swapchainImageIndex]); // TODO (unique pipeline ?!)
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), pje::context.commandBuffers[swapchainImageIndex]);
 }
 
 /* Cleanup needed when EngineGui::init() was invoked */

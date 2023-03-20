@@ -1620,6 +1620,7 @@ int pje::startGlfw3(const char* windowName) {
 		return -1;
 	}
 
+	// glfwSetInputMode(pje::context.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	setGlfwCallbacks();
 
 	return 0;

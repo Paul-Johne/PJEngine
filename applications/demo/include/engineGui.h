@@ -15,7 +15,7 @@ namespace pje {
 	/* #### ImGui Implementation in PJEngine #### */
 	class EngineGui {
 	public:
-		ImGuiIO				m_io;
+		ImGuiIO*			m_io;
 		VkDescriptorPool	m_descriptorPool;
 		VkRenderPass		m_renderpass;
 

@@ -18,7 +18,7 @@ set(DEMO_LIB_SOURCES
 
     # src folder - imgui
     "${CMAKE_CURRENT_SOURCE_DIR}/src/imgui.cpp"
-    #"${CMAKE_CURRENT_SOURCE_DIR}/src/imgui_demo.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/imgui_demo.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/imgui_draw.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/imgui_tables.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/imgui_widgets.cpp"
