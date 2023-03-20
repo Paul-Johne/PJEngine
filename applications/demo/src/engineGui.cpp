@@ -48,7 +48,7 @@ void pje::EngineGui::init(GLFWwindow* window) {
 	vkCreateDescriptorPool(pje::context.logicalDevice, &poolInfo, nullptr, &this->m_descriptorPool);
 
 	/* Guess : ImGui needs its own subpass */
-	ImGui_ImplGlfw_InitForVulkan(window, false);
+	ImGui_ImplGlfw_InitForVulkan(window, true);
 	ImGui_ImplVulkan_InitInfo imInfo{};
 	imInfo.Instance			= pje::context.vulkanInstance;
 	imInfo.PhysicalDevice	= pje::context.physicalDevices[pje::context.choosenPhysicalDevice];
