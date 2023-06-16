@@ -13,9 +13,9 @@
 	#include <glm/gtc/matrix_transform.hpp>
 
 	#include <globalParams.h>
-	#include <vef.h>
 	#include <debugUtils.h>
 	#include <engineGui.h>
+	#include <vef.h>
 
 namespace pje {
 	std::vector<char> readSpirvFile(const std::string& filename);

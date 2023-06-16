@@ -40,26 +40,11 @@ pje::Uniforms pje::uniforms = {
 	glm::mat4(1.0f)
 };
 
-std::vector<pje::PJVertex> pje::debugVertices = {
-	pje::PJVertex({ -0.5f, 0.0f, -0.5f}, {5.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}),
-	pje::PJVertex({  0.5f, 0.0f, -0.5f}, {0.0f, 5.0f, 0.0f}, {0.0f, 1.0f, 0.0f}),
-	pje::PJVertex({ -0.5f, 0.0f,  0.5f}, {0.0f, 0.0f, 5.0f}, {0.0f, 1.0f, 0.0f}),
-	pje::PJVertex({  0.5f, 0.0f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 0.0f})
-};
-std::vector<uint32_t> pje::debugIndices = {
-	0, 2, 1,
-	1, 2, 3
-};
-
-std::vector<pje::PJMesh> pje::debugMesh = {
-	pje::PJMesh(pje::debugVertices, pje::debugIndices, 0, 0)
-};
-
 std::vector<pje::PJModel> pje::loadedModels = {};
 
 pje::PJBuffer pje::stagingBuffer = {};
 
-/* One PJModel with all its PJMeshes */
+/* One PJModel with all its PJMeshes in two PJBuffer containers */
 pje::PJBuffer pje::vertexBuffer = {};
 pje::PJBuffer pje::indexBuffer = {};
 
@@ -74,3 +59,21 @@ pje::PJBuffer pje::storeBoneMatrices = {};
 pje::PJImage pje::texAlbedo = {};
 pje::PJImage pje::rtMsaa = {};
 pje::PJImage pje::rtDepth = {};
+
+// ##################################################################################################################################################################
+
+/* OUTDATED DEBUG CODE => Triangle */
+std::vector<pje::PJVertex> pje::debugVertices = {
+	pje::PJVertex({ -0.5f, 0.0f, -0.5f}, {5.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}),
+	pje::PJVertex({  0.5f, 0.0f, -0.5f}, {0.0f, 5.0f, 0.0f}, {0.0f, 1.0f, 0.0f}),
+	pje::PJVertex({ -0.5f, 0.0f,  0.5f}, {0.0f, 0.0f, 5.0f}, {0.0f, 1.0f, 0.0f}),
+	pje::PJVertex({  0.5f, 0.0f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 0.0f})
+};
+std::vector<uint32_t> pje::debugIndices = {
+	0, 2, 1,
+	1, 2, 3
+};
+
+std::vector<pje::PJMesh> pje::debugMesh = {
+	pje::PJMesh(pje::debugVertices, pje::debugIndices, 0, 0)
+};

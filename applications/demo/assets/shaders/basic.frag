@@ -28,4 +28,7 @@ void main() {
 	}
 
 	color = vec4(color.rgb * cosTheta, color.a);
+	// automated code for rendering on depth image after color calculation
+
 }
+// Vk_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT => rendering on resolve image

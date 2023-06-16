@@ -1,5 +1,5 @@
-# PJEngine (Graphic Engine using Vulkan SDK to render animations in realtime)
-Praxisprojekt (*Beginn: SS2022*)
+# PJEngine : A Platform-Independent Real-Time Renderer Using The Vulkan SDK
+Developed as part of the practial project at Cologne University of Applied Sciences (*Start: SS2022*)
 
 ![Gif](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/gifsForGithub/PJEngine_cover.gif)
 

@@ -95,9 +95,9 @@ void pje::EngineGui::init(GLFWwindow* window) {
 	submitInfo.commandBufferCount	= 1;
 	submitInfo.pCommandBuffers		= &commandBuffer;
 
-	vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, pje::context.fenceBasic);
-	vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceBasic, VK_TRUE, std::numeric_limits<uint64_t>::max());
-	vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceBasic);
+	vkQueueSubmit(pje::context.queueForPrototyping, 1, &submitInfo, pje::context.fenceSetupTasks);
+	vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceSetupTasks, VK_TRUE, std::numeric_limits<uint64_t>::max());
+	vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceSetupTasks);
 
 	ImGui_ImplVulkan_DestroyFontUploadObjects();
 }

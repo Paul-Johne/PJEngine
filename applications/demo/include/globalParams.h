@@ -26,7 +26,7 @@ namespace pje {
 		VkInstance											vulkanInstance					= VK_NULL_HANDLE;
 		VkSurfaceKHR										surface							= VK_NULL_HANDLE;
 		std::vector<VkPhysicalDevice>						physicalDevices;
-		VkPhysicalDeviceFeatures							physicalDeviceFeatures			= {};							// hold VkPhysicalDeviceFeatures2 values
+		VkPhysicalDeviceFeatures							physicalDeviceFeatures			= {};
 		VkDevice											logicalDevice					= VK_NULL_HANDLE;
 
 		// dynamically choosen by selectGPU()
@@ -61,7 +61,7 @@ namespace pje {
 		VkSemaphore											semaphoreSwapchainImageReceived	= VK_NULL_HANDLE;
 		VkSemaphore											semaphoreRenderingFinished		= VK_NULL_HANDLE;
 		VkFence												fenceRenderFinished				= VK_NULL_HANDLE;
-		VkFence												fenceBasic						= VK_NULL_HANDLE;
+		VkFence												fenceSetupTasks					= VK_NULL_HANDLE;
 
 		GLFWwindow*											window;
 		bool												isWindowMinimized				= false;

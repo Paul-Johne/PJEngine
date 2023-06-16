@@ -9,9 +9,8 @@
 #include <assimp/postprocess.h>
 
 #define DEFAULT_ASSIMP_FLAGS aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_FlipUVs
-#define INTERNET_ASSIMP_FLAGS aiProcess_Triangulate | aiProcess_SortByPType | aiProcess_GenUVCoords | aiProcess_OptimizeMeshes | aiProcess_ValidateDataStructure | aiProcess_GenNormals | aiProcess_CalcTangentSpace | aiProcess_LimitBoneWeights | aiProcess_JoinIdenticalVertices | aiProcess_FlipWindingOrder
 
-pje::ModelLoader::ModelLoader() : m_models(), m_modelPaths(), m_activeModels(0), m_centerModel(true), m_folderForModels("assets/models") {
+pje::Modelloader::Modelloader() : m_models(), m_modelPaths(), m_activeModels(0), m_centerModel(true), m_folderForModels("assets/models") {
 	for (const auto& each : std::filesystem::directory_iterator(m_folderForModels)) {
 		auto path = each.path().string();
 
@@ -22,9 +21,9 @@ pje::ModelLoader::ModelLoader() : m_models(), m_modelPaths(), m_activeModels(0),
 	}
 }
 
-pje::ModelLoader::~ModelLoader() {}
+pje::Modelloader::~Modelloader() {}
 
-pje::PJModel pje::ModelLoader::loadModel(const std::string& filename, unsigned int pFlags, bool centerModel) {
+pje::PJModel pje::Modelloader::loadModel(const std::string& filename, unsigned int pFlags, bool centerModel) {
 	Assimp::Importer	importer;
 	uint32_t			offsetVertices(0);
 	uint32_t			offsetIndices(0);
@@ -33,7 +32,7 @@ pje::PJModel pje::ModelLoader::loadModel(const std::string& filename, unsigned i
 
 	if (!pScene || !pScene->mRootNode || pScene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) {
 		std::cout << "[Error] : " << importer.GetErrorString() << std::endl;
-		throw std::runtime_error("Error at ModelLoader::loadModel!");
+		throw std::runtime_error("Error at Modelloader::loadModel!");
 	}
 	else {
 		std::cout << "[DEBUG] \tSuccess at loading object from: " << filename << std::endl;
@@ -94,7 +93,7 @@ pje::PJModel pje::ModelLoader::loadModel(const std::string& filename, unsigned i
 	return temp_PJModel;
 }
 
-glm::mat4 pje::ModelLoader::convertToColumnMajor(const aiMatrix4x4& matrix) {
+glm::mat4 pje::Modelloader::convertToColumnMajor(const aiMatrix4x4& matrix) {
 	glm::mat4 res;
 	
 	for (int c = 0; c < 4; c++) {
@@ -107,7 +106,7 @@ glm::mat4 pje::ModelLoader::convertToColumnMajor(const aiMatrix4x4& matrix) {
 	return res;
 }
 
-void pje::ModelLoader::recurseNodes(aiNode* node, const aiScene* pScene, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices, glm::mat4 accTransform) {
+void pje::Modelloader::recurseNodes(aiNode* node, const aiScene* pScene, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices, glm::mat4 accTransform) {
 	glm::mat4 transform(accTransform * convertToColumnMajor(node->mTransformation));
 	
 	// extract all mesh data from this node
@@ -124,7 +123,7 @@ void pje::ModelLoader::recurseNodes(aiNode* node, const aiScene* pScene, bool is
 	}
 }
 
-pje::PJMesh pje::ModelLoader::convertMesh(aiMesh* mesh, const aiScene* pScene, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices, const glm::mat4& accTransform) {
+pje::PJMesh pje::Modelloader::convertMesh(aiMesh* mesh, const aiScene* pScene, bool isFbx, uint32_t& offsetVertices, uint32_t& offsetIndices, const glm::mat4& accTransform) {
 	std::vector<PJVertex> vertices;
 	std::vector<uint32_t> indices;
 
@@ -142,7 +141,7 @@ pje::PJMesh pje::ModelLoader::convertMesh(aiMesh* mesh, const aiScene* pScene, b
 		}
 	}
 	else {
-		throw std::runtime_error("Error at ModelLoader::translateMesh : Mesh has no normals!");
+		throw std::runtime_error("Error at Modelloader::translateMesh : Mesh has no normals!");
 	}
 
 	// Apply initial tranform to vertices in parallel | [&] capture clause => makes accTransform visible
@@ -183,7 +182,7 @@ pje::PJMesh pje::ModelLoader::convertMesh(aiMesh* mesh, const aiScene* pScene, b
 	return PJMesh(vertices, indices, offsetVertices - vertices.size(), offsetIndices - indices.size());
 }
 
-void pje::ModelLoader::loadTextureFromFBX(pje::PJModel& fbx, const aiScene* pScene) {
+void pje::Modelloader::loadTextureFromFBX(pje::PJModel& fbx, const aiScene* pScene) {
 	std::cout << "[DEBUG] \tEmbedded Textures : " << pScene->mNumTextures << " | " << " Embedded Materials : " << pScene->mNumMaterials << std::endl;
 
 	if (pScene->HasMaterials()) {
