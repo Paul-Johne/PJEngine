@@ -109,7 +109,7 @@ void pje::EngineGui::nextGuiFrame() {
 	
 	ImGui::NewFrame();
 	ImGui::Begin("EngineGui");
-	ImGui::Text("How am I supposed to change the camera position?");
+	ImGui::Text("Test Text");
 	ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / this->m_io->Framerate, this->m_io->Framerate);
 	ImGui::End();
 
@@ -126,6 +126,9 @@ void pje::EngineGui::drawGui(uint32_t swapchainImageIndex) {
 
 /* Cleanup needed when EngineGui::init() was invoked */
 void pje::EngineGui::shutdown() {
+	/* Waiting for Vulkan API to finish all its tasks */
+	vkDeviceWaitIdle(pje::context.logicalDevice);
+
 	ImGui_ImplVulkan_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	vkDestroyDescriptorPool(pje::context.logicalDevice, this->m_descriptorPool, nullptr);

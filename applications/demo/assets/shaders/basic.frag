@@ -19,6 +19,7 @@ void main() {
 	vec3 n = normalize(vIn.normal);
 	float cosTheta = max(n.z, 0.0); // n.z * 1 <=> dot(n, vec3(0.0, 0.0, 1.0))
 
+	/* 2 options for color source value: */
 	// color = vec4(vIn.fragColor * cosTheta, 1.0);
 	color = texture(texSampler, vIn.texCoord);
 
@@ -28,7 +29,9 @@ void main() {
 	}
 
 	color = vec4(color.rgb * cosTheta, color.a);
-	// automated code for rendering on depth image after color calculation
 
+	// automated code for rendering on depth image after color calculation
 }
-// Vk_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT => rendering on resolve image
+
+// Vk_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT after main() 
+//	=> rendering on resolve image after fragment shader

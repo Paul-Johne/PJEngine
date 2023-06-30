@@ -65,7 +65,7 @@ void clearShaderStages() {
 	pje::context.shaderStageInfos.clear();
 }
 
-/* Searches for an memory type index of the choosen physical device that equals memoryTypeBits and the given flags*/
+/* Searches for a memory type index of the choosen physical device that equals memoryTypeBits and the given flags*/
 uint32_t getMemoryTypeIndex(uint32_t memoryTypeBits, VkMemoryPropertyFlags flags) { 
 	VkPhysicalDeviceMemoryProperties memProps;
 	vkGetPhysicalDeviceMemoryProperties(pje::context.physicalDevices[pje::context.choosenPhysicalDevice], &memProps);
@@ -308,11 +308,11 @@ VkImage createVkImage(VkFormat format, VkExtent3D imageSize, VkSampleCountFlagBi
 
 /* Allocates VkMemory for a given VkImage */
 VkDeviceMemory allocateVkImageMemory(VkImage image, VkMemoryPropertyFlags memoryFlags) {
-	VkDeviceMemory memory(VK_NULL_HANDLE);
-	VkMemoryRequirements memReq;
-	VkMemoryAllocateInfo memAllocInfo;
+	VkDeviceMemory			memory(VK_NULL_HANDLE);
+	VkMemoryRequirements	memReq;
+	VkMemoryAllocateInfo	memAllocInfo;
 
-	/* Considers VK_SAMPLE_COUNT_4_BIT for memReq.size */
+	/* Considers VK_SAMPLE_COUNT_n_BIT for memReq.size */
 	vkGetImageMemoryRequirements(pje::context.logicalDevice, image, &memReq);
 
 	memAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -1027,8 +1027,8 @@ void pje::cleanupRealtimeRendering(bool reset) {
 	}
 }
 
-/* Recording of context.commandBuffers - Declares what has to be rendered later */
-void recordRenderCommands(pje::PJModel& renderable, uint32_t numberOfCommandBuffer, std::unique_ptr<pje::EngineGui> const& gui = std::unique_ptr<pje::EngineGui>{}) {
+/* Recording of context.commandBuffer - Declares what has to be rendered */
+void recordRenderCommand(pje::PJModel& renderable, uint32_t imageIndex) {
 	// Defines CommandBuffer behavior
 	VkCommandBufferBeginInfo commandBufferBeginInfo;
 	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1061,61 +1061,61 @@ void recordRenderCommands(pje::PJModel& renderable, uint32_t numberOfCommandBuff
 	renderPassBeginInfo.clearValueCount = 3;
 	renderPassBeginInfo.pClearValues = clearValues.data();
 
-	/* RECORDING of all context.commandBuffers */
-	for (uint32_t i = 0; i < numberOfCommandBuffer; i++) {
-		/* START RECORDING */
-		pje::context.result = vkBeginCommandBuffer(pje::context.commandBuffers[i], &commandBufferBeginInfo);
-		if (pje::context.result != VK_SUCCESS) {
-			cout << "Error at vkBeginCommandBuffer of Command Buffer No.:\t" << pje::context.commandBuffers[i] << endl;
-			throw runtime_error("Error at vkBeginCommandBuffer");
-		}
+	/* RECORDING of context.commandBuffers[aquiredImageIndex] */
+	/* START RECORDING */
+	pje::context.result = vkBeginCommandBuffer(pje::context.commandBuffers[imageIndex], &commandBufferBeginInfo);		// resets CommandBuffer automatically
+	if (pje::context.result != VK_SUCCESS) {
+		cout << "Error at vkBeginCommandBuffer of Command Buffer No.:\t" << pje::context.commandBuffers[imageIndex] << endl;
+		throw runtime_error("Error at vkBeginCommandBuffer");
+	}
 
-		renderPassBeginInfo.framebuffer = pje::context.swapchainFramebuffers[i];									// framebuffer that the current command buffer is associated with
-		vkCmdBeginRenderPass(pje::context.commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);		// connects CommandBuffer to Framebuffer ; CommandBuffer knows RenderPass
+	renderPassBeginInfo.framebuffer = pje::context.swapchainFramebuffers[imageIndex];									// framebuffer that the current command buffer is associated with
+	vkCmdBeginRenderPass(pje::context.commandBuffers[imageIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);	// connects CommandBuffer to Framebuffer ; CommandBuffer knows RenderPass
 
-		// BIND => decide for an pipeline and use it for graphical calculation
-		vkCmdBindPipeline(pje::context.commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pje::context.pipeline);
+	// BIND => decide for an pipeline and use it for graphical calculation
+	vkCmdBindPipeline(pje::context.commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pje::context.pipeline);
 
-		// SET dynamic states for vkCmdDraw
-		VkViewport viewport{ 0.0f, 0.0f, pje::context.windowWidth, pje::context.windowHeight, 0.0f, 1.0f };
-		vkCmdSetViewport(pje::context.commandBuffers[i], 0, 1, &viewport);
-		VkRect2D scissor{ {0, 0}, {pje::context.windowWidth, pje::context.windowHeight} };
-		vkCmdSetScissor(pje::context.commandBuffers[i], 0, 1, &scissor);
+	// SET dynamic states for vkCmdDraw
+	VkViewport viewport{ 0.0f, 0.0f, pje::context.windowWidth, pje::context.windowHeight, 0.0f, 1.0f };
+	vkCmdSetViewport(pje::context.commandBuffers[imageIndex], 0, 1, &viewport);
+	VkRect2D scissor{ {0, 0}, {pje::context.windowWidth, pje::context.windowHeight} };
+	vkCmdSetScissor(pje::context.commandBuffers[imageIndex], 0, 1, &scissor);
 
-		// BIND => ordering to use certain buffer in VRAM
-		array<VkDeviceSize, 1> offsets{ 0 };
-		vkCmdBindDescriptorSets(
-			pje::context.commandBuffers[i],
-			VK_PIPELINE_BIND_POINT_GRAPHICS,
-			pje::context.pipelineLayout,
-			0,
-			1,
-			&pje::context.descriptorSet,
-			0,
-			nullptr
-		);
+	// BIND => ordering to use certain buffer in VRAM
+	array<VkDeviceSize, 1> offsets{ 0 };
+	vkCmdBindDescriptorSets(
+		pje::context.commandBuffers[imageIndex],
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		pje::context.pipelineLayout,
+		0,
+		1,
+		&pje::context.descriptorSet,
+		0,
+		nullptr
+	);
 
-		vkCmdBindVertexBuffers(pje::context.commandBuffers[i], 0, 1, &pje::vertexBuffer.buffer, offsets.data());
-		vkCmdBindIndexBuffer(pje::context.commandBuffers[i], pje::indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindVertexBuffers(pje::context.commandBuffers[imageIndex], 0, 1, &pje::vertexBuffer.buffer, offsets.data());
+	vkCmdBindIndexBuffer(pje::context.commandBuffers[imageIndex], pje::indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-		// DRAW => drawing on swapchain images
-		for (const auto& mesh : renderable.m_meshes) {
-			vkCmdDrawIndexed(pje::context.commandBuffers[i], mesh.m_indices.size(), 1, mesh.m_offsetIndices, mesh.m_offsetVertices, 0);
-		}
+	// DRAW => drawing on swapchain images
+	for (const auto& mesh : renderable.m_meshes) {
+		vkCmdDrawIndexed(pje::context.commandBuffers[imageIndex], mesh.m_indices.size(), 1, mesh.m_offsetIndices, mesh.m_offsetVertices, 0);
+	}
 
 #ifdef ACTIVATE_ENGINE_GUI
-		gui->drawGui(i);
+	/* additional EngineGui object created once for all function invocations */
+	static std::unique_ptr<pje::EngineGui> const& gui = std::unique_ptr<pje::EngineGui>{};
+	gui->drawGui(imageIndex);
 #endif
 
-		vkCmdEndRenderPass(pje::context.commandBuffers[i]);
+	vkCmdEndRenderPass(pje::context.commandBuffers[imageIndex]);
 
-		pje::context.result = vkEndCommandBuffer(pje::context.commandBuffers[i]);
-		if (pje::context.result != VK_SUCCESS) {
-			cout << "Error at vkEndCommandBuffer of Command Buffer No.:\t" << pje::context.commandBuffers[i] << endl;
-			throw runtime_error("Error at vkEndCommandBuffer");
-		}
-		/* END RECORDING */
+	pje::context.result = vkEndCommandBuffer(pje::context.commandBuffers[imageIndex]);
+	if (pje::context.result != VK_SUCCESS) {
+		cout << "Error at vkEndCommandBuffer of Command Buffer No.:\t" << pje::context.commandBuffers[imageIndex] << endl;
+		throw runtime_error("Error at vkEndCommandBuffer");
 	}
+	/* END RECORDING */
 }
 
 /* Setup for Swapchain, Renderpass, Pipeline and CommandBuffer Recording */
@@ -1261,8 +1261,8 @@ void setupRealtimeRendering(bool reset = false) {
 
 		// VkSubpassDependency can be seen as a semaphore between subpasses for their micro tasks
 		VkSubpassDependency subpassDependency;
-		subpassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;									// waiting for the next finishing subpass
-		subpassDependency.dstSubpass = 0;													// 0 is index of subpass in renderpass
+		subpassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;									// relates to commands bevor vkCmdBeginRenderPass
+		subpassDependency.dstSubpass = 0;													// index of subpass in renderpass
 		subpassDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;		// src scope has to finish that state ..
 		subpassDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;		// .. before dst is allowed to start this state
 		subpassDependency.srcAccessMask = VK_ACCESS_NONE;
@@ -1270,7 +1270,7 @@ void setupRealtimeRendering(bool reset = false) {
 		subpassDependency.dependencyFlags = 0;
 
 		VkSubpassDependency subpassDependencyDepth;
-		subpassDependencyDepth.srcSubpass = VK_SUBPASS_EXTERNAL;							// doesn't render on rendertarget before finishing previous subpass
+		subpassDependencyDepth.srcSubpass = VK_SUBPASS_EXTERNAL;							// relates to commands bevor vkCmdBeginRenderPass
 		subpassDependencyDepth.dstSubpass = 0;
 		subpassDependencyDepth.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 		subpassDependencyDepth.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
@@ -1292,7 +1292,7 @@ void setupRealtimeRendering(bool reset = false) {
 		renderPassInfo.pNext = nullptr;
 		renderPassInfo.flags = 0;
 		renderPassInfo.attachmentCount = 3;										// all VkAttachmentDescription(s) for subpassDescription's VkAttachmentReference(s)
-		renderPassInfo.pAttachments = attachmentDescriptions.data();			// order	DOES	matter !
+		renderPassInfo.pAttachments = attachmentDescriptions.data();			// order	DOES	matter ! (connected to order of framebuffer.pAttachments)
 		renderPassInfo.subpassCount = 1;
 		renderPassInfo.pSubpasses = &subpassDescription;						// all subpasses of the current render pass
 		renderPassInfo.dependencyCount = 2;
@@ -2075,10 +2075,11 @@ int pje::startVulkan() {
 	VkFenceCreateInfo fenceInfo;
 	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceInfo.pNext = nullptr;
-	fenceInfo.flags = 0;									// unsignaled
 
-	vkCreateFence(pje::context.logicalDevice, &fenceInfo, nullptr, &pje::context.fenceRenderFinished);
+	fenceInfo.flags = 0;									// unsignaled
 	vkCreateFence(pje::context.logicalDevice, &fenceInfo, nullptr, &pje::context.fenceSetupTasks);
+	fenceInfo.flags = 1;									// signaled
+	vkCreateFence(pje::context.logicalDevice, &fenceInfo, nullptr, &pje::context.fenceRenderFinished);
 
 	/* ############## SETUP FOR REAL TIME RENDERING ############## */
 	setupRealtimeRendering();
@@ -2168,17 +2169,24 @@ void updateMatrices() {
 void drawFrameOnSurface() {
 	if (!pje::context.isWindowMinimized) {
 		uint32_t imageIndex;								// current imageIndex of swapchain
-		pje::context.result = vkAcquireNextImageKHR(		// async => GPU can already compute without having a rendertarget
+		vkAcquireNextImageKHR(								// async => GPU can already compute without having a rendertarget
 			pje::context.logicalDevice,
 			pje::context.swapchain,
-			numeric_limits<uint64_t>::max(),				// timeout in ns before abort
+			0,												// timeout in ns before abort
 			pje::context.semaphoreSwapchainImageReceived,	// semaphore	=> only visible on GPU side
 			VK_NULL_HANDLE,									// fences		=> CPU - GPU synchronization
 			&imageIndex
 		);
-		if (pje::context.result != VK_SUCCESS) {			// VK_SUBOPTIMAL etc. should be handled here
-			throw runtime_error("Could not acquire image from swapchain.");
-		}
+		
+		/* CPU waits here until all fences in pFences are signaled */
+		vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceRenderFinished, VK_TRUE, numeric_limits<uint64_t>::max());
+		/* Unsignals fence(s) */
+		vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceRenderFinished);
+		/* Resets current pje::context.commandBuffer to initial state */
+		vkResetCommandBuffer(pje::context.commandBuffers[imageIndex], 0);
+
+		/* Record pje::context.commandBuffer[imageIndex] designated to rendering */
+		recordRenderCommand(pje::loadedModels[pje::config::selectedPJModel], imageIndex);
 
 		array<VkPipelineStageFlags, 1> waitStageMask{
 			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT	// allows async rendering behavior
@@ -2196,7 +2204,7 @@ void drawFrameOnSurface() {
 		submitInfo.pSignalSemaphores = &pje::context.semaphoreRenderingFinished;	// which semaphore will be triggered when submit step done
 
 		/* Submitting CommandBuffer to queue => ACTUAL RENDERING */
-		/* Fence must be unsignaled to proceed and signals fence once all submitted command buffers have completed execution */
+		/* Fence must be unsignaled to proceed and signals fence once ALL submitted command buffers have completed execution */
 		pje::context.result = vkQueueSubmit(
 			pje::context.queueForPrototyping,
 			1,
@@ -2207,13 +2215,6 @@ void drawFrameOnSurface() {
 			cout << "Error at vkQueueSubmit" << endl;
 			return;
 		}
-
-		/* CPU waits here until all fences in pFences are signaled */
-		vkWaitForFences(pje::context.logicalDevice, 1, &pje::context.fenceRenderFinished, VK_TRUE, numeric_limits<uint64_t>::max());
-		/* Unsignals fence(s) */
-		vkResetFences(pje::context.logicalDevice, 1, &pje::context.fenceRenderFinished);
-		/* Resets current pje::context.commandBuffer in question */
-		vkResetCommandBuffer(pje::context.commandBuffers[imageIndex], 0);
 
 		/* VkSwapchainKHR holds a reference to a surface to present on */
 		VkPresentInfoKHR presentInfo;
@@ -2226,6 +2227,7 @@ void drawFrameOnSurface() {
 		presentInfo.pImageIndices = &imageIndex;
 		presentInfo.pResults = nullptr;												// error code from different swapchains possible
 
+		/* Marks images as presentable */
 		pje::context.result = vkQueuePresentKHR(pje::context.queueForPrototyping, &presentInfo);
 		if (pje::context.result != VK_SUCCESS) {
 			cout << "Error at vkQueuePresentKHR" << endl;
@@ -2251,9 +2253,7 @@ void pje::loopVisualizationOf(GLFWwindow* window, std::unique_ptr<pje::EngineGui
 		/* Code for perspective of the camera into the scene */
 		updateMatrices();
 
-		/* Record pje::context.commandBuffer(s) designated to rendering */
-		recordRenderCommands(pje::loadedModels[pje::config::selectedPJModel], pje::context.numberOfImagesInSwapchain);
-		/* Resets pje::context.commandBuffer(s) after pje::context.commandBuffer(s) submission */
+		/* Records pje::context.commandBuffer[imageIndex] | Draws on surface connected to swapchain */
 		drawFrameOnSurface();
 	}
 }

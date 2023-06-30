@@ -104,7 +104,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_chilli_plant.fbx"
             "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_chilli_plant.fbx"
-    # Temporary until embedded textures are fixed
+    # Temporary until embedded textures are fixed | Update : not needed anymore
     COMMAND ${CMAKE_COMMAND} -E copy
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/chilli_plant_albedo_depth8.png"
             "${CMAKE_CURRENT_BINARY_DIR}/assets/models/chilli_plant_albedo_depth8.png"
