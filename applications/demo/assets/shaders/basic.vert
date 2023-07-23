@@ -38,10 +38,12 @@ layout(set = 0, binding = 2, std430) readonly buffer BONEBUFFER {
 
 /* Data for fragment shader */
 layout(location = 0) out VOut {
-	vec3 fragColor;
+	vec3 color;
 	vec3 normal;
 	vec2 texCoord;
 } vOut;
+
+/* ### ENTRY POINT ### */
 
 void main() {
 	/* Either use vertex in model or bone space if bones are available */
@@ -50,13 +52,13 @@ void main() {
 	/* boneRange[1] holds number of bones connected to vertex */
 	for (uint b = 0; b < boneRange[1]; b++) {
 		/* Puts vertex into bone space of the current bone in question */
-		vec4 boneSpacePos = boneMatrices.matrix[boneRefs.reference[boneRange[0] + b].boneId] * vec4(pos, 1.0);
+		vec4 boneSpacePos = boneMatrices.matrix[boneRefs.reference[boneRange[0] + b].boneId] * vec4(pos, 1.0f);
 		/* Calculates actual position of vertex after every step of the for loop */
 		animPos += boneRefs.reference[boneRange[0] + b].weight * boneSpacePos;
 	}
 
-	gl_Position = uniforms.mvp * vec4(animPos.xyz, 1.0);
-	vOut.fragColor = color;
-	vOut.normal = (uniforms.viewMatrix * transpose(inverse(uniforms.modelMatrix)) * vec4(normal, 0.0)).xyz;
+	gl_Position = uniforms.mvp * vec4(animPos.xyz, 1.0f);
+	vOut.color = color;
+	vOut.normal = (uniforms.viewMatrix * transpose(inverse(uniforms.modelMatrix)) * vec4(normal, 0.0f)).xyz;
 	vOut.texCoord = texCoord;
 }

@@ -7,6 +7,7 @@
 
 /* Comment out to turn off */
 //#define ACTIVATE_ENGINE_GUI
+#define ACTIVATE_DEPTH_TEST
 
 namespace pje::config {
 	inline constexpr	char*							appName							= "PJEngine";
@@ -31,9 +32,9 @@ namespace pje::config {
 	inline constexpr	size_t							selectedPJModel					= 2;																// ISSUE(only pje_chilli_plant.fbx is working at the moment)
 	inline constexpr	float							antiFbxScale					= 0.01f;
 
-	inline const		glm::mat4						initCameraPose					= glm::inverse(glm::lookAt(glm::vec3(0.0f, 1.0f, 2.0f), 
-																												   glm::vec3(0.0f, 0.0f, 0.0f), 
-																												   glm::vec3(0.0f, 1.0f, 0.0f)));
+	inline const		glm::mat4						initCameraPose					= glm::inverse(glm::lookAt(glm::vec3(0.0f, 1.0f, 2.0f),				// Position in World Space
+																												   glm::vec3(0.0f, 0.0f, 0.0f),				// Point to look at
+																												   glm::vec3(0.0f, 1.0f, 0.0f)));			// Up Vector of Camera
 	inline constexpr	float							nearPlane						= 0.1f;
 	inline constexpr	float							farPlane						= 100.0f;
 }

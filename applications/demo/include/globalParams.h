@@ -81,7 +81,7 @@ namespace pje {
 	};
 	extern Uniforms uniforms;
 
-	/* #### STORAGE BUFFER #### */
+	/* #### STORAGE BUFFER - bones for animations #### */
 	struct BoneRef {
 		uint32_t boneId;
 		float weight;
