@@ -6,7 +6,7 @@
 	#include <glm/gtc/matrix_transform.hpp>
 
 /* Comment out to turn off */
-//#define ACTIVATE_ENGINE_GUI
+#define ACTIVATE_ENGINE_GUI
 #define ACTIVATE_DEPTH_TEST
 
 namespace pje::config {

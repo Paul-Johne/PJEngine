@@ -190,7 +190,7 @@ namespace pje {
 		bool										m_centered;
 
 		/* Expects 8Bits per channel */
-		void pje::PJModel::prepareTexture(const aiTexture* compressedRaw, size_t dstIndex, uint8_t desiredChannels = STBI_rgb_alpha, bool newEntry = true);
+		void prepareTexture(const aiTexture* compressedRaw, size_t dstIndex, uint8_t desiredChannels = STBI_rgb_alpha, bool newEntry = true);
 	};
 	extern std::vector<pje::PJModel> loadedModels;
 

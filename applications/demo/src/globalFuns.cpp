@@ -1631,6 +1631,7 @@ int pje::startGlfw3(const char* windowName) {
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
+	// Fullscreen Mode : glfwGetPrimaryMonitor() instead of nullptr
 	pje::context.window = glfwCreateWindow(pje::context.windowWidth, pje::context.windowHeight, windowName, nullptr, nullptr);
 	if (pje::context.window == NULL) {
 		cout << "Error at glfwCreateWindow" << endl;
