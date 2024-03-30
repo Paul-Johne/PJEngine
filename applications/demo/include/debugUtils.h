@@ -120,6 +120,7 @@ VkResult pje::set_object_name(VkDevice device, T object, const char* name, const
 			name
 		};
 
+		// function pointer must be available at this point
 		auto res = vef::vkSetDebugUtilsObjectNameEXT(device, &name_info);
 
 		return res;

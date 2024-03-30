@@ -42,11 +42,15 @@ set_property(
 
 # sets right value for __cplusplus parameter
 if(MSVC)
-    target_compile_options(demo PUBLIC "/Zc:__cplusplus")
+    target_compile_options(demo PRIVATE "/Zc:__cplusplus")
 endif()
 
 # enables <*.h> instead of using "*.h"
-target_include_directories(demo PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+# IMPORTANT : use command AFTER adding all sources to target
+target_include_directories(demo 
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
 
 # defines dependencies ; xxx::xxx => Vulkan::Vulkan
 find_package(Vulkan REQUIRED)
@@ -80,6 +84,7 @@ compile_shaders(
         "--target-env=vulkan1.0" "-O"
 )
 
+# ensures that demo_shader is build before demo
 add_dependencies(demo demo_shaders)
 
 # add 3D objects to binary project =====> TODO (Choosing objects dynamically)
@@ -104,7 +109,8 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/pje_chilli_plant.fbx"
             "${CMAKE_CURRENT_BINARY_DIR}/assets/models/pje_chilli_plant.fbx"
-    # Temporary until embedded textures are fixed | Update : not needed anymore
+    # Temporary until embedded textures are fixed
+    # UPDATE : not needed anymore
     COMMAND ${CMAKE_COMMAND} -E copy
             "${CMAKE_CURRENT_SOURCE_DIR}/assets/models/chilli_plant_albedo_depth8.png"
             "${CMAKE_CURRENT_BINARY_DIR}/assets/models/chilli_plant_albedo_depth8.png"

@@ -2149,9 +2149,8 @@ void updateMatrices() {
 		glm::vec3(0.0f, -1.0f, 0.0f)
 	);
 
-	pje::uniforms.viewMatrix = glm::inverse(
-		pje::context.cameraPose					// current cameraPose => TODO(modifiable via ImGui)
-	);
+	// current cameraPose => TODO(modifiable via ImGui)
+	pje::uniforms.viewMatrix = pje::context.cameraPose;
 
 	pje::uniforms.projectionMatrix = glm::perspective(
 		glm::radians(60.0f),
