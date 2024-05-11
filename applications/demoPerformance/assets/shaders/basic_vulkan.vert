@@ -13,7 +13,7 @@ layout(location = 0) out VertexOut {
 
 /* additional Shader Types */
 struct BoneReference {
-	uint	boneID;		// index into boneMatrices
+	uint	boneId;		// index into boneMatrices
 	float	weight;		// value between 0 and 1
 };
 
@@ -47,13 +47,13 @@ void main() {
 	/* boneAttrib[1] holds number of bones connected to vertex */
 	for (uint currentBone; currentBone < boneAttrib[1]; currentBone++) {
 		/* puts vertex into bonespace to calculate new position in modelspace | calculates weighted animationPos */
-		vec4 animationPos = boneMatrices.matrix[boneRefs.reference[boneAttrib[0] + currentBone].boneID] * vec4(pos, 1.0f);
+		vec4 animationPos = boneMatrices.matrix[boneRefs.reference[boneAttrib[0] + currentBone].boneId] * vec4(pos, 1.0f);
 		animationPos_weighted += boneRefs.reference[boneAttrib[0] + currentBone].weight * animationPos;
 
 		/* transpose(inverse(<matrix>)) to preserve normal | mat3 => rotation matrix */
 		vertexOut.normal +=
 			boneRefs.reference[boneAttrib[0] + currentBone].weight * 
-			transpose(inverse(mat3(boneMatrices.matrix[boneRefs.reference[boneAttrib[0] + currentBone].boneID]))) * 
+			transpose(inverse(mat3(boneMatrices.matrix[boneRefs.reference[boneAttrib[0] + currentBone].boneId]))) * 
 			vec3(normal);
 	}
 

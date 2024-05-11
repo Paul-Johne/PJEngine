@@ -13,7 +13,7 @@ namespace pje::engine {
 		LSysGenerator() = delete;
 		/* STANDARD CONSTRUCTOR
 		*	L-System := {Alphabet, Axiom, Rules}
-		*	>> [INFO]	Only supports 1L-Systems at the moment
+		*	>> [INFO]	Only supports 0L and 1L-Systems at the moment
 		*	>> [INFO]	Characters without defined rule will persist in new word
 		*	>> [INFO]	Generates first m_currentLSysWord automatically
 		*/

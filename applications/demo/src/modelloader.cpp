@@ -10,7 +10,7 @@
 
 #define DEFAULT_ASSIMP_FLAGS aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_FlipUVs
 
-pje::Modelloader::Modelloader() : m_models(), m_modelPaths(), m_activeModels(0), m_centerModel(true), m_folderForModels("assets/models") {
+pje::Modelloader::Modelloader() : m_models(), m_modelPaths(), m_activeModels(0), m_centerModel(true), m_folderForModels("assets/models"), m_meshesOfCurrentModel() {
 	for (const auto& each : std::filesystem::directory_iterator(m_folderForModels)) {
 		auto path = each.path().string();
 

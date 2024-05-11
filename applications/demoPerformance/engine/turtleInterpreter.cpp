@@ -13,7 +13,7 @@ pje::engine::PlantTurtle::PlantTurtle(std::string inputAlphabet, std::string val
 	std::sort(inputAlphabet.begin(), inputAlphabet.end());
 
 	if (inputAlphabet == acceptedAlphabet) {
-		std::cout << "passt" << std::endl;
+		std::cout << "[PJE] \tPlantTurtle received valid input alphabet for object generation." << std::endl;
 	}
 	else {
 		throw std::runtime_error("PlantTurtle doesn't understand given input alphabet.");

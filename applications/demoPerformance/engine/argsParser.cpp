@@ -7,7 +7,7 @@ pje::engine::ArgsParser::ArgsParser(int argc, char** argv, uint8_t valid_argc) {
 	/* pattern: --<argName >= <argValue> */
 	std::regex argsPattern("--(.*)=(.*)");
 
-	/* map for regex evaluation */
+	/* map for regex evaluation | <argName>(s) */
 	std::unordered_map<std::string, int> validLiterals{
 		{"a", 0}, {"c", 1}, {"w", 2}, {"h", 3}, {"vsync", 4}, {"env", 5}
 	};

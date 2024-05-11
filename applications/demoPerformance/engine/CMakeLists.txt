@@ -12,6 +12,9 @@ target_sources(demoPerformance
 		"${CMAKE_CURRENT_SOURCE_DIR}/lSysGenerator.h"
 		"${CMAKE_CURRENT_SOURCE_DIR}/lSysGenerator.cpp"
 
+		"${CMAKE_CURRENT_SOURCE_DIR}/sourceloader.h"
+		"${CMAKE_CURRENT_SOURCE_DIR}/sourceloader.cpp"
+
 		"${CMAKE_CURRENT_SOURCE_DIR}/turtleInterpreter.h"
 		"${CMAKE_CURRENT_SOURCE_DIR}/turtleInterpreter.cpp"
 )

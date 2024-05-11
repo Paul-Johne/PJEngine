@@ -10,7 +10,8 @@
 
 namespace pje::engine {
 
-	// virtual <return type> <method name> () = 0
+	// abstract function: virtual <return type> <method name> () = 0
+
 	/* [ABSTRACT] TurtleInterpreter - Declares base functionalities (Generating of matrices and PJEModel) */
 	class TurtleInterpreter {
 	public:
