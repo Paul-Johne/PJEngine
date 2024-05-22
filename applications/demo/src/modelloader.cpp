@@ -186,7 +186,6 @@ void pje::Modelloader::loadTextureFromFBX(pje::PJModel& fbx, const aiScene* pSce
 	std::cout << "[DEBUG] \tEmbedded Textures : " << pScene->mNumTextures << " | " << " Embedded Materials : " << pScene->mNumMaterials << std::endl;
 
 	if (pScene->HasMaterials()) {
-		aiReturn result;
 		aiString materialName;
 		aiString currentTexturePath;
 		aiMaterial* currentMaterial;

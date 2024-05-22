@@ -35,9 +35,13 @@ namespace pje::engine::types {
 	struct Texture {
 		std::vector<unsigned char>	uncompressedTexture;
 		std::string					name;
+
 		int							width;
 		int							height;
 		int							channels;
+
+		/* width * height * channels */
+		size_t						size;
 	};
 
 	/* MVPMatrices - used to place model in scene */
@@ -71,10 +75,11 @@ namespace pje::engine::types {
 	public:
 		std::vector<Vertex>				m_vertices;
 		std::vector<uint32_t>			m_indices;
-		uint32_t						m_offsetPriorMeshVertices;
-		uint32_t						m_offsetPriorMeshIndices;
+		uint32_t						m_offsetPriorMeshesVertices = 0;	// helper: address this mesh's vertices => for TurtleInterpreter
+		uint32_t						m_offsetPriorMeshesIndices = 0;		// helper: address this mesh's indices	=> for TurtleInterpreter
 
-		Mesh();
+		Mesh() = delete;
+		Mesh(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices, uint32_t offsetVertices, uint32_t offsetIndices);
 		~Mesh();
 	};
 
@@ -82,20 +87,30 @@ namespace pje::engine::types {
 	class Primitive {
 	public:
 		std::vector<Mesh>				m_meshes;
-		Texture							m_texture;							// texture ressource
-		std::shared_ptr<BoneMatrices>	boneMatrices;						// 1 Primitive <-> 1 Bone
-		uint32_t						m_offsetPriorPrimitiveVertices;
-		uint32_t						m_offsetPriorPrimitiveIndices;
+		Texture							m_texture;	// texture ressource
 
 		Primitive();
-		~Primitive();
+		virtual ~Primitive();
+	};
+
+	/* LSysPrimitive - modified Primitives | logical component of LSysObject */
+	class LSysPrimitive final : public Primitive {
+	public:
+		std::shared_ptr<BoneRefs>		m_boneRefs;								// PROJECT LIMITATION: 1 LSysPrimitive <-> 1 Ref into m_boneMatrices
+		std::shared_ptr<BoneMatrices>	m_boneMatrices;							// PROJECT LIMITATION: 1 LSysPrimitive <-> 1 Bone
+		uint32_t						m_offsetPriorPrimitivesVertices	= 0;	// helper: address this primitive's vertices => for Graphics API
+		uint32_t						m_offsetPriorPrimitivesIndices	= 0;	// helper: address this primitive's indices  => for Graphics API
+
+		LSysPrimitive();
+		~LSysPrimitive();
 	};
 
 	/* LSysObject - created by TurtleInterpreter | represents logical renderable */
 	class LSysObject {
 	public:
-		MVPMatrices				m_matrices;		// object space -> world/camera/screen space
-		std::vector<Primitive>	m_primitives;	// primitives are in local space
+		std::vector<LSysPrimitive>	m_objectPrimitives; // primitives are placed (local) object space
+		Texture						m_choosenTexture;	// PROJECT LIMITATION: same texture map for all primitives
+		MVPMatrices					m_matrices;			// object space -> world/camera/screen space
 
 		LSysObject();
 		~LSysObject();

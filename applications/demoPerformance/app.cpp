@@ -8,6 +8,7 @@ int main(int argc, char* argv[]) {
 	GLFWwindow*									window;
 	std::unique_ptr<pje::engine::ArgsParser>	parser;
 	std::unique_ptr<pje::engine::LSysGenerator>	generator;
+	std::unique_ptr<pje::engine::Sourceloader>	loader;
 	std::unique_ptr<pje::engine::PlantTurtle>	plantTurtle;
 
 	// TEMP : ArgsParser Init Test
@@ -33,7 +34,16 @@ int main(int argc, char* argv[]) {
 			"]"												// Environmental Input
 		);
 
-		std::cout << "[PJE] \tL-System word: " << generator.get()->getCurrentLSysWord() << std::endl;
+		std::cout << "[PJE] \tL-System word: " << generator->getCurrentLSysWord() << std::endl;
+	}
+	catch (std::runtime_error& ex) {
+		std::cout << "[ERROR] Exception thrown: " << ex.what() << std::endl;
+		return -1;
+	}
+
+	// TEMP : Sourceloader Init Test
+	try {
+		loader = std::make_unique<pje::engine::Sourceloader>();
 	}
 	catch (std::runtime_error& ex) {
 		std::cout << "[ERROR] Exception thrown: " << ex.what() << std::endl;
@@ -45,9 +55,12 @@ int main(int argc, char* argv[]) {
 		plantTurtle = std::make_unique<pje::engine::PlantTurtle>(
 			std::string(generator->getAlphabet())
 		);
+
+		plantTurtle->buildLSysObject(generator->getCurrentLSysWord(), loader->m_primitives);
 	}
 	catch (std::runtime_error& ex) {
 		std::cout << "[ERROR] Exception thrown: " << ex.what() << std::endl;
+		return -1;
 	}
 
 	// TEMP : GLFW Init Test
@@ -105,7 +118,6 @@ int main(int argc, char* argv[]) {
 		return -4;
 	}
 
-	// TEMP : Renderloop Dummy
 	std::cout << "[PJE] \tRendering.." << std::endl;
 	glfwTerminate();
 	return 0;

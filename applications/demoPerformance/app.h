@@ -14,6 +14,7 @@
 	#include <chrono>							// time stamps
 	#include <cmath>							// math functions
 	#include <algorithm>						// classic functions for ranges
+	#include <execution>						// parallel algorithms
 
 	#include <assimp/scene.h>					// Assimp: data structure
 	#include <assimp/Importer.hpp>				// Assimp: importer interface

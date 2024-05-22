@@ -45,7 +45,7 @@ void main() {
 	vertexOut.normal			= boneAttrib[1] == 0 ? vec3(normal)		: vec3(0.0f);
 
 	/* boneAttrib[1] holds number of bones connected to vertex */
-	for (uint currentBone; currentBone < boneAttrib[1]; currentBone++) {
+	for (uint currentBone = 0; currentBone < boneAttrib[1]; currentBone++) {
 		/* puts vertex into bonespace to calculate new position in modelspace | calculates weighted animationPos */
 		vec4 animationPos = boneMatrices.matrix[boneRefs.reference[boneAttrib[0] + currentBone].boneId] * vec4(pos, 1.0f);
 		animationPos_weighted += boneRefs.reference[boneAttrib[0] + currentBone].weight * animationPos;

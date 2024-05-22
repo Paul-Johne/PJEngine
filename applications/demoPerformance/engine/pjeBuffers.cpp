@@ -41,18 +41,25 @@ VkVertexInputBindingDescription pje::engine::types::Vertex::getVulkanBindingDesc
 
 /* ################################################################################### */
 
+pje::engine::types::Mesh::Mesh(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices, uint32_t offsetVertices, uint32_t offsetIndices) : 
+	m_vertices(vertices), m_indices(indices), m_offsetPriorMeshesVertices(offsetVertices), m_offsetPriorMeshesIndices(offsetIndices) {}
+
+pje::engine::types::Mesh::~Mesh() {}
+
+/* ################################################################################### */
+
 pje::engine::types::Primitive::Primitive() {}
 
 pje::engine::types::Primitive::~Primitive() {}
 
 /* ################################################################################### */
 
-pje::engine::types::Mesh::Mesh() {}
+pje::engine::types::LSysPrimitive::LSysPrimitive() : Primitive() {}
 
-pje::engine::types::Mesh::~Mesh() {}
+pje::engine::types::LSysPrimitive::~LSysPrimitive() {}
 
 /* ################################################################################### */
 
-pje::engine::types::LSysObject::LSysObject() {}
+pje::engine::types::LSysObject::LSysObject() : m_matrices() {}
 
 pje::engine::types::LSysObject::~LSysObject() {}

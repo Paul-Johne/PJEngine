@@ -1,14 +1,9 @@
 #include "turtleInterpreter.h"
 
-pje::engine::TurtleInterpreter::TurtleInterpreter(std::string validAlphabet) : m_alphabet(validAlphabet) {}
+pje::engine::PlantTurtle::PlantTurtle(std::string inputAlphabet) : TurtleInterpreter<std::vector<pje::engine::types::Primitive>>("SLF-+[]"), m_renderable() {
+	std::string acceptedAlphabet = { m_alphabet };
 
-pje::engine::TurtleInterpreter::~TurtleInterpreter() {}
-
-/* ################################################################################### */
-
-pje::engine::PlantTurtle::PlantTurtle(std::string inputAlphabet, std::string validAlphabet) : TurtleInterpreter(validAlphabet) {
-	std::string acceptedAlphabet = { this->m_alphabet };
-
+	/* sorting both alphabets to check for identicalness */
 	std::sort(acceptedAlphabet.begin(), acceptedAlphabet.end());
 	std::sort(inputAlphabet.begin(), inputAlphabet.end());
 
@@ -21,3 +16,7 @@ pje::engine::PlantTurtle::PlantTurtle(std::string inputAlphabet, std::string val
 }
 
 pje::engine::PlantTurtle::~PlantTurtle() {}
+
+void pje::engine::PlantTurtle::buildLSysObject(std::string lSysWord, const std::vector<pje::engine::types::Primitive>& primitiveSet) {
+	std::cout << "[PJE] \tBuilding LSysObject.." << std::endl;
+}
