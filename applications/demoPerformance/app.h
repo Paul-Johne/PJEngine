@@ -4,15 +4,12 @@
 /* Third Party Files */
 	#include <cstdint>							// fixed size integer
 	#include <string>							// std::string
-	#include <array>							// std::array
-	#include <vector>							// std::vector
 	#include <memory>							// std::<smartPointer>
+	#include <unordered_map>					// hashtable
 
 	#include <iostream>							// i/o stream
-	#include <fstream>							// read from files
-	#include <filesystem>						// file paths
+	#include <stdexcept>						// std::runtime_error
 	#include <chrono>							// time stamps
-	#include <cmath>							// math functions
 	#include <algorithm>						// classic functions for ranges
 	#include <execution>						// parallel algorithms
 
@@ -22,7 +19,9 @@
 	#include <stb_image.h>						// stb
 	#include <GL/gl3w.h>						// OpenGL [via gl3w]
 	#include <vulkan/vulkan.h>					// Vulkan
-	#include <glm/glm.hpp>						// glm
+	#include <glm/glm.hpp>						// glm types
+	#include <glm/gtx/string_cast.hpp>			// glm to string debugging
+	#include <glm/gtc/matrix_transform.hpp>		// glm matrix operations
 	#include <GLFW/glfw3.h>						// GLFW
 
 /* Project Files */

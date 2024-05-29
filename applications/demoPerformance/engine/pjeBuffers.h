@@ -1,6 +1,7 @@
 /* Ignores header if not needed after #include */
 	#pragma once
 
+/* Third Party Files */
 	#include <cstdint>			// fixed size integer
 	#include <string>			// std::string
 	#include <array>			// std::array
@@ -8,7 +9,7 @@
 	#include <memory>			// std::<smartPointer>
 
 	#include <vulkan/vulkan.h>	// Vulkan
-	#include <glm/glm.hpp>		// glm
+	#include <glm/glm.hpp>		// glm types
 	#include <stb_image.h>		// stb
 
 /* PJE Types - holding data for both Vulkan and OpenGL */
@@ -33,8 +34,8 @@ namespace pje::engine::types {
 
 	/* Texture - 1 Primitive <-> 1 Texture */
 	struct Texture {
-		std::vector<unsigned char>	uncompressedTexture;
 		std::string					name;
+		std::vector<unsigned char>	uncompressedTexture;
 
 		int							width;
 		int							height;
@@ -44,23 +45,23 @@ namespace pje::engine::types {
 		size_t						size;
 	};
 
-	/* MVPMatrices - used to place model in scene */
+	/* MVPMatrices - used to place model in scene (init => identity matrices) */
 	struct MVPMatrices {
-		glm::mat4 mvp;				// object space -> screen space
-		glm::mat4 modelMatrix;		// object space -> world space
-		glm::mat4 viewMatrix;		// world space	-> camera space
-		glm::mat4 projectionMatrix;	// camera space -> screen space
+		glm::mat4 mvp				= glm::mat4(1.0f);	// object space -> screen space
+		glm::mat4 modelMatrix		= glm::mat4(1.0f);	// object space -> world space
+		glm::mat4 viewMatrix		= glm::mat4(1.0f);	// world space	-> camera space
+		glm::mat4 projectionMatrix	= glm::mat4(1.0f);	// camera space -> screen space
 	};
 
-	/* BoneRefs - shader ressource to reference BoneMatrices::animationpose */
-	struct BoneRefs {
-		uint32_t	boneId;
-		float		weight;
+	/* BoneRef - shader ressource to reference a BoneMatrix inside of shader */
+	struct BoneRef {
+		size_t	boneId;
+		float	weight;
 	};
 
-	/* BoneMatrices - shared data container for multiple Primitive(s) */
-	struct BoneMatrices {
-		/*
+	/* Bone - shared data container for multiple Primitive(s) */
+	struct Bone {
+		/* BoneMatrix (for shaders) := animationpose * restposeInv | [ O'_i * O_i^-1 ]
 		*	- transformation matrix	(1)				(m_restpose)		: local/primitive/bone space -> object space
 		*	- "local view transformation" matrix	(m_restposeInv)		: object space -> local/primitive/bone space
 		*	- transformation matrix (2)				(m_animationpose)	: bone space -> object space
@@ -75,8 +76,8 @@ namespace pje::engine::types {
 	public:
 		std::vector<Vertex>				m_vertices;
 		std::vector<uint32_t>			m_indices;
-		uint32_t						m_offsetPriorMeshesVertices = 0;	// helper: address this mesh's vertices => for TurtleInterpreter
-		uint32_t						m_offsetPriorMeshesIndices = 0;		// helper: address this mesh's indices	=> for TurtleInterpreter
+		uint32_t						m_offsetPriorMeshesVertices = 0;	// helper during sourceloader
+		uint32_t						m_offsetPriorMeshesIndices = 0;		// helper during sourceloader
 
 		Mesh() = delete;
 		Mesh(const std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices, uint32_t offsetVertices, uint32_t offsetIndices);
@@ -86,8 +87,9 @@ namespace pje::engine::types {
 	/* Primitive - 1 LSysObject <-> n Primitive(s)*/
 	class Primitive {
 	public:
-		std::vector<Mesh>				m_meshes;
-		Texture							m_texture;	// texture ressource
+		std::string			m_identifier;	// unique identifier for a primitive set of some TurtleInterpreter
+		std::vector<Mesh>	m_meshes;
+		Texture				m_texture;		// texture ressource
 
 		Primitive();
 		virtual ~Primitive();
@@ -96,10 +98,8 @@ namespace pje::engine::types {
 	/* LSysPrimitive - modified Primitives | logical component of LSysObject */
 	class LSysPrimitive final : public Primitive {
 	public:
-		std::shared_ptr<BoneRefs>		m_boneRefs;								// PROJECT LIMITATION: 1 LSysPrimitive <-> 1 Ref into m_boneMatrices
-		std::shared_ptr<BoneMatrices>	m_boneMatrices;							// PROJECT LIMITATION: 1 LSysPrimitive <-> 1 Bone
-		uint32_t						m_offsetPriorPrimitivesVertices	= 0;	// helper: address this primitive's vertices => for Graphics API
-		uint32_t						m_offsetPriorPrimitivesIndices	= 0;	// helper: address this primitive's indices  => for Graphics API
+		uint32_t						m_offsetPriorPrimitivesVertices	= 0;	// helper: address this primitive's vertices count
+		uint32_t						m_offsetPriorPrimitivesIndices	= 0;	// helper: address this primitive's indices count
 
 		LSysPrimitive();
 		~LSysPrimitive();
@@ -108,9 +108,12 @@ namespace pje::engine::types {
 	/* LSysObject - created by TurtleInterpreter | represents logical renderable */
 	class LSysObject {
 	public:
-		std::vector<LSysPrimitive>	m_objectPrimitives; // primitives are placed (local) object space
+		std::vector<LSysPrimitive>	m_objectPrimitives; // primitives placed in object space
+		MVPMatrices					m_matrices;			// object space -> world/camera/screen space	(set by OpenGL/Vulkan part)
+
 		Texture						m_choosenTexture;	// PROJECT LIMITATION: same texture map for all primitives
-		MVPMatrices					m_matrices;			// object space -> world/camera/screen space
+		std::vector<Bone>			m_bones;			// PROJECT LIMITATION: 1 boneMatrix <-> 1+ LSysPrimitive   !!!
+		std::vector<BoneRef>		m_boneRefs;			// PROJECT LIMITATION: 1 boneRef	<-> 1  LSysPrimitive
 
 		LSysObject();
 		~LSysObject();

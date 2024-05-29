@@ -2145,8 +2145,8 @@ void updateMatrices() {
 
 	pje::uniforms.modelMatrix = glm::rotate(
 		glm::mat4(1.0f),						// identity matrix
-		duration * glm::radians(20.0f),
-		glm::vec3(0.0f, -1.0f, 0.0f)
+		duration * glm::radians(-20.0f),
+		glm::vec3(0.0f, 1.0f, 0.0f)
 	);
 
 	// current cameraPose => TODO(modifiable via ImGui)

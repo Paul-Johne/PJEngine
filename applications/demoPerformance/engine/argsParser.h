@@ -1,6 +1,7 @@
 /* Ignores header if not needed after #include */
 	#pragma once
 
+/* Third Party Files */
 	#include <cstdint>			// fixed size integer
 	#include <string>			// std::string
 	#include <unordered_map>	// hashtable
@@ -28,6 +29,7 @@ namespace pje::engine {
 		*/
 		ArgsParser(int argc, char** arcv, uint8_t valid_argc = 7);
 		~ArgsParser();
+
 	private:
 		/* return value for switch case evaluation in ArgsParser(int, char**, uint8_t) */
 		int mapArgToInt(std::unordered_map<std::string, int> map, std::string arg);

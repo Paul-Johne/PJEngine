@@ -2,6 +2,8 @@
 	#pragma once
 
 /* Third Party Files */
+	#include <fstream>		// read from files
+
 	#include <GL/gl3w.h>
 
 /* Project Files */

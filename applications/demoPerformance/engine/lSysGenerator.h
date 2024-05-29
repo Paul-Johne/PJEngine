@@ -1,6 +1,7 @@
 /* Ignores header if not needed after #include */
 	#pragma once
 
+/* Third Party Files */
 	#include <cstdint>			// fixed size integer
 	#include <string>			// std::string
 	#include <unordered_map>	// hashtable
@@ -23,6 +24,7 @@ namespace pje::engine {
 		void generate1LSysWord(std::string axiom, uint8_t iterations);
 		std::string getCurrentLSysWord() const;
 		std::string getAlphabet() const;
+
 	private:
 		std::string m_currentLSysWord;
 		std::string m_alphabet;

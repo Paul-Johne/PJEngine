@@ -1,6 +1,7 @@
 /* Ignores header if not needed after #include */
 	#pragma once
 
+/* Third Party Files */
 	#include <cstdint>				// fixed size integer
 	#include <string>				// std::string
 	#include <vector>				// std::vector
@@ -14,8 +15,9 @@
 	#include <assimp/Importer.hpp>	// Assimp: importer interface
 	#include <assimp/postprocess.h>	// Assimp: post processing flags
 	#include <stb_image.h>			// stb
-	#include <glm/glm.hpp>			// glm
+	#include <glm/glm.hpp>			// glm types
 
+/* Project Files */
 	#include "pjeBuffers.h"
 
 namespace pje::engine {
@@ -29,12 +31,13 @@ namespace pje::engine {
 
 		Sourceloader();
 		~Sourceloader();
+
 	private:
 		bool					m_centerPrimitive;
 		std::filesystem::path	m_sourceFolder;
 
 		/* loads primitives and their textures into m_primitives and m_textures */
-		void loadPrimitive(const std::string& filename, unsigned int flags, bool centerPrimitive);
+		void loadPrimitive(const std::string& filepath, unsigned int flags, bool centerPrimitive);
 
 		/* loads decompressed texture of a certain type for the given primitive */
 		void loadTextureTypeFor(pje::engine::types::Primitive& primitive, const std::string& type, uint8_t texChannels, const aiScene* pScene);
@@ -60,5 +63,8 @@ namespace pje::engine {
 
 		/* Assimp (row major) -> glm (column major) */
 		static glm::mat4 matrix4x4Assimp2glm(const aiMatrix4x4& matrix);
+
+		/* extracts filename of its filepath */
+		static std::string getFilename(const std::string& filepath);
 	};
 }

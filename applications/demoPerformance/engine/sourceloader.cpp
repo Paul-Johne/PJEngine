@@ -8,27 +8,27 @@ pje::engine::Sourceloader::Sourceloader() : m_primitives(),
 											m_activePrimitivesCount(0),  
 											m_centerPrimitive(false), 
 											m_sourceFolder("assets/primitives") {
-	/* looking for .fbx elements in m_sourceFolder to load data from those files */
+	/* looking for .fbx elements in m_sourceFolder to load data from those filepaths */
 	for (const auto& each : std::filesystem::directory_iterator(m_sourceFolder)) {
 		auto path = each.path().string();
 
 		if (path.find(".fbx") != std::string::npos) {
 			std::cout << "[PJE] \t.fbx file found at: " << path << std::endl;
 			loadPrimitive(path, DEFAULT_ASSIMP_FLAGS, m_centerPrimitive);
-			std::cout << "[PJE] \Importing fbx => primitive --- DONE" << std::endl;
+			std::cout << "[PJE] \tImporting fbx => primitive --- DONE" << std::endl;
 		}
 	}
 }
 
 pje::engine::Sourceloader::~Sourceloader() {}
 
-void pje::engine::Sourceloader::loadPrimitive(const std::string& filename, unsigned int flags, bool centerPrimitive) {
+void pje::engine::Sourceloader::loadPrimitive(const std::string& filepath, unsigned int flags, bool centerPrimitive) {
 	std::vector<pje::engine::types::Mesh>	currentMeshes;		// empty mesh collector for primitive
 	uint32_t								offsetVertices(0);	// helper to set Primitive::m_meshes' offsets
 	uint32_t								offsetIndices(0);	// helper to set Primitive::m_meshes' offsets
 
 	Assimp::Importer	importer;
-	const aiScene*		pScene = importer.ReadFile(filename, flags);
+	const aiScene*		pScene = importer.ReadFile(filepath, flags);
 
 	if (!pScene || !pScene->mRootNode || pScene->mFlags & AI_SCENE_FLAGS_INCOMPLETE) {
 		throw std::runtime_error("Assimp cannot load primitive's data!");
@@ -40,7 +40,7 @@ void pje::engine::Sourceloader::loadPrimitive(const std::string& filename, unsig
 		/* instantiating temporary primitive to stack onto m_primitives later */
 		pje::engine::types::Primitive currentPrimitive{};
 
-		m_primitivePaths.push_back(filename);
+		m_primitivePaths.push_back(filepath);
 		currentPrimitive.m_meshes.insert(currentPrimitive.m_meshes.end(), currentMeshes.begin(), currentMeshes.end());
 
 		/* additional centering of vertices in its local space (only necessary when 3D model wasn't exported correctly) */
@@ -68,11 +68,14 @@ void pje::engine::Sourceloader::loadPrimitive(const std::string& filename, unsig
 					}
 				);
 			}
-			std::cout << "[PJE] \tCentering done." << std::endl;
+			std::cout << "[PJE] \tCentering --- DONE" << std::endl;
 		}
 
 		/* loads certain texture into predestined texture slot (m_texture) of currentPrimitive */
 		loadTextureTypeFor(currentPrimitive, "albedo", STBI_rgb_alpha, pScene);
+
+		/* sets identifier for TurtleInterpreter */
+		currentPrimitive.m_identifier = this->getFilename(filepath);
 
 		m_primitives.push_back(currentPrimitive);
 		++m_activePrimitivesCount;
@@ -90,6 +93,7 @@ void pje::engine::Sourceloader::loadTextureTypeFor(pje::engine::types::Primitive
 		for (unsigned int i = 0; i < pScene->mNumTextures; i++) {
 			rawTexture = pScene->mTextures[i];
 			currentFilename = rawTexture->mFilename.C_Str();
+			currentFilename = this->getFilename(currentFilename);
 
 			if (currentFilename.find(type) != std::string::npos) {
 				size_t pixelCount;
@@ -183,7 +187,7 @@ pje::engine::types::Mesh pje::engine::Sourceloader::meshAssimp2PJE(aiMesh* pMesh
 		}
 	);
 
-	/* copying IBO */
+	/* copying IBO | offset to prior vertices will be handled by OpenGL/Vulkan functions */
 	for (unsigned int i = 0; i < pMesh->mNumFaces; i++) {
 		aiFace face = pMesh->mFaces[i];
 		for (unsigned int j = 0; j < face.mNumIndices; j++) {
@@ -209,4 +213,13 @@ glm::mat4 pje::engine::Sourceloader::matrix4x4Assimp2glm(const aiMatrix4x4& assi
 	}
 
 	return glmMatrix;
+}
+
+std::string pje::engine::Sourceloader::getFilename(const std::string& filepath) {
+	/* looks for last '/' or '\' in given std::string */
+	size_t dataNamePos = filepath.find_last_of("/\\");
+	if (dataNamePos != std::string::npos)
+		return filepath.substr(dataNamePos + 1);
+	else
+		return filepath;
 }
