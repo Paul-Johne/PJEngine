@@ -30,3 +30,5 @@
 	#include "engine/lSysGenerator.h"
 	#include "engine/sourceloader.h"
 	#include "engine/turtleInterpreter.h"
+	#include "opengl/rendererGL.h"
+	#include "vulkan/rendererVK.h"

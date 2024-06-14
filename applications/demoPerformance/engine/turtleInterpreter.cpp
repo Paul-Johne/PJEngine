@@ -1,4 +1,5 @@
 #include "turtleInterpreter.h"
+//#define DEBUG
 
 /* PlantTurtle only works with an alphabet := "SLF-+[]" */
 pje::engine::PlantTurtle::PlantTurtle(std::string inputAlphabet) : TurtleInterpreter<pje::engine::types::Primitive>("SLF-+[]"), m_renderable() {
@@ -28,7 +29,7 @@ void pje::engine::PlantTurtle::buildLSysObject(std::string lSysWord, const std::
 	m_offsetVCount = 0;
 	m_offsetICount = 0;
 
-	std::cout << "[PJE] \tBuilding Renderable (LSysObject).." << std::endl;
+	std::cout << "[PJE] \tBuilding Renderable (LSysObject) ..." << std::endl;
 
 	/* lookup table for faster access to each primitive */
 	std::unordered_map<std::string, pje::engine::types::Primitive> primitiveSet;
@@ -65,13 +66,14 @@ void pje::engine::PlantTurtle::buildLSysObject(std::string lSysWord, const std::
 	for (std::string::size_type i = 0; i < lSysWord.size(); i++) {
 		evaluateLSysCommand(lSysWord[i], primitiveSet);
 	}
-	
+#ifdef DEBUG
 	std::cout << "[PJE] \tColumns of final m_turtlePosMat:\n\t" << glm::to_string(m_turtlePosMat) << std::endl;
+#endif // DEBUG
 	std::cout << 
 		"[PJE] \tBuilding Renderable (LSysObject) --- DONE" << 
 		"\n\tPrimitives inside of Renderable : \t" << m_renderable.m_objectPrimitives.size() << 
 		"\n\tBones inside of Renderable : \t\t" << m_renderable.m_bones.size() <<
-		"\n\tBoneRefs inside of Renderable : \t" << m_renderable.m_boneRefs.size() << 
+		"\n\tBoneRefs inside of Renderable : \t" << m_renderable.m_boneRefs.size() << "\n" <<
 	std::endl;
 }
 
@@ -171,7 +173,9 @@ void pje::engine::PlantTurtle::deployPrimitive(const pje::engine::types::Primiti
 
 	/* local translation: m_turtlePosMat * postTurtleTranslation */
 	m_turtlePosMat = glm::translate(m_turtlePosMat, postTurtleTranslation);
+#ifdef DEBUG
 	std::cout << "[GLM] \tColumns of m_turtlePosMat after deployPrimitive:\n\t" << glm::to_string(m_turtlePosMat) << std::endl;
+#endif // DEBUG
 }
 
 void pje::engine::PlantTurtle::tiltTurtle(float degrees) {
@@ -185,7 +189,9 @@ void pje::engine::PlantTurtle::tiltTurtle(float degrees) {
 
 	/* local rotation: m_turtlePosMat * rotation */
 	m_turtlePosMat *= rotation;
+#ifdef DEBUG
 	std::cout << "[GLM] \tColumns of tilted m_turtlePosMat:\n\t" << glm::to_string(m_turtlePosMat) << std::endl;
+#endif // DEBUG
 }
 
 pje::engine::types::Bone pje::engine::PlantTurtle::createBone() {

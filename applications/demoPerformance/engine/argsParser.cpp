@@ -49,7 +49,7 @@ pje::engine::ArgsParser::ArgsParser(int argc, char** argv, uint8_t valid_argc) {
 			}
 		}
 	}
-	std::cout << "[PJE] \tAll correct args were evaluated." << std::endl;
+	std::cout << "[PJE] \tAll correct args were evaluated.\n" << std::endl;
 }
 
 pje::engine::ArgsParser::~ArgsParser() {}
