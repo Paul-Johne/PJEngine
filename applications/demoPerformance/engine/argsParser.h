@@ -15,11 +15,11 @@ namespace pje::engine {
 	class ArgsParser {
 	public:
 		/* members with default values */
-		uint8_t			m_amountOfObjects		= 0;
+		uint8_t			m_amountOfObjects		= 1;
 		uint8_t			m_complexityOfObjects	= 0;
 		uint16_t		m_width					= 100;
 		uint16_t		m_height				= 100;
-		bool			m_vsync					= 1;		// TRUE
+		bool			m_vsync					= 0;
 		std::string		m_graphicsAPI			= "";
 
 		ArgsParser() = delete;

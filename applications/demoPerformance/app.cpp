@@ -72,6 +72,9 @@ int main(int argc, char* argv[]) {
 		else if (parser->m_graphicsAPI.find("opengl") != std::string::npos) {
 			glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
 			glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
+			if (!parser->m_vsync)
+				/* Expecting vsync as default in OpenGL/GLFW */
+				glfwSwapInterval(0);
 		}
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
@@ -95,11 +98,11 @@ int main(int argc, char* argv[]) {
 				return -4;
 			}
 			std::unique_ptr<pje::renderer::RendererGL> glRenderer = 
-				std::make_unique<pje::renderer::RendererGL>(*parser, window);
+				std::make_unique<pje::renderer::RendererGL>(*parser, window, plantTurtle->m_renderable);
 		}
 		else if (parser->m_graphicsAPI.find("vulkan") != std::string::npos) {
 			std::unique_ptr<pje::renderer::RendererVK> vkRenderer = 
-				std::make_unique<pje::renderer::RendererVK>(*parser, window);
+				std::make_unique<pje::renderer::RendererVK>(*parser, window, plantTurtle->m_renderable);
 		}
 		else {
 			std::cout << "[PJE] \tNO GRAPHICS API WERE SELECTED!" << std::endl;

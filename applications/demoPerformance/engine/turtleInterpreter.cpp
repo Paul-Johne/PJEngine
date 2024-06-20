@@ -42,6 +42,7 @@ void pje::engine::PlantTurtle::buildLSysObject(std::string lSysWord, const std::
 		[&primitiveSet](const pje::engine::types::Primitive& primitive) {
 			for (const auto& identifier : primitiveIdentifier) {
 				if (primitive.m_identifier.find(identifier) != std::string::npos) {
+					/* filling lookup table */
 					primitiveSet[identifier] = primitive;
 					break;
 				}

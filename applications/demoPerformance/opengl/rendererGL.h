@@ -19,7 +19,7 @@ namespace pje::renderer {
 	class RendererGL final : public pje::renderer::RendererInterface {
 	public:
 		RendererGL() = delete;
-		RendererGL(const pje::engine::ArgsParser& parser, GLFWwindow* const window);
+		RendererGL(const pje::engine::ArgsParser& parser, GLFWwindow* const window, pje::engine::types::LSysObject renderable);
 		~RendererGL();
 
 	private:

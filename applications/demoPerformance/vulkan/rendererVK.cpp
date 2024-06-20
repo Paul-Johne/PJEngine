@@ -1,7 +1,7 @@
 #include "rendererVK.h"
 #define DEBUG
 
-pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLFWwindow* const window) : 
+pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLFWwindow* const window, pje::engine::types::LSysObject renderable) : 
 	RendererInterface(), m_context(), m_renderWidth(parser.m_width), m_renderHeight(parser.m_height), 
 	m_vsync(parser.m_vsync), m_anisotropyLevel(AnisotropyLevel::TWOx), m_msaaFactor(VkSampleCountFlagBits::VK_SAMPLE_COUNT_4_BIT) {
 
@@ -12,6 +12,8 @@ pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLF
 		throw std::runtime_error("Validation layer for instance dispatch chain was not found.");
 #endif // DEBUG
 	requestGlfwInstanceExtensions();
+
+	/* 1) Setup of basic Vulkan environment */
 	setInstance();
 	setSurface(window);
 	setPhysicalDevice(
@@ -27,29 +29,58 @@ pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLF
 		throw std::runtime_error("Choosen GPU does not support the required swapchain extension.");
 	setDeviceAndQueue(VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT | VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT);
 	setShaderProgram("basic_vulkan");
+
+	/* 2) Declaration of shader code structure */
+	setDescriptorSet(
+		std::vector<DescriptorSetElementVK>{
+			{VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT}, 
+			{VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, static_cast<uint32_t>(renderable.m_boneRefs.size()), VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT}, 
+			{VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, static_cast<uint32_t>(renderable.m_bones.size()), VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT}, 
+			{VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT}
+		}
+	);
+	setRenderpass();
+	buildPipeline();
+
+	/* 3) Rendertargets (results of graphical computations) */
+	setRendertarget(
+		m_context.rtMsaa,
+		VkExtent3D{ m_renderWidth, m_renderHeight, 1 },
+		m_context.surfaceFormat.format,
+		VkImageUsageFlagBits::VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+		VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT
+	);
+	setRendertarget(
+		m_context.rtDepth,
+		VkExtent3D{ m_renderWidth, m_renderHeight, 1 },
+		VkFormat::VK_FORMAT_D32_SFLOAT,
+		VkImageUsageFlagBits::VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+		VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT
+	);
+	setSwapchain(VkExtent2D{ m_renderWidth, m_renderHeight });
+
+	/* 4) Framebuffers: bridge between rendertargets and renderpass */
+	setFramebuffers(3);
+
+	/* 5) Synchronization tools */
 	setFence(m_context.fenceSetupTask, false);
 	setFence(m_context.fenceImgRendered, true);
 	setSemaphore(m_context.semSwapImgReceived);
 	setSemaphore(m_context.semImgRendered);
-	setDescriptorSet();
-	setRenderpass();
-	//buildPipeline();
+
+	/* 6) Commandbuffers: sends commands to GPU */
+	setCommandPool();
+	//setCommandbuffer();
 }
 
 pje::renderer::RendererVK::~RendererVK() {
+	/* Better solution: using vma */
 	vkDeviceWaitIdle(m_context.device);
 	std::cout << "[VK] \tCleaning up handles ..." << std::endl;
 
-	if (m_context.pipeline != VK_NULL_HANDLE)
-		vkDestroyPipeline(m_context.device, m_context.pipeline, nullptr);
-	if (m_context.pipelineLayout != VK_NULL_HANDLE)
-		vkDestroyPipelineLayout(m_context.device, m_context.pipelineLayout, nullptr);
-	if (m_context.renderPass != VK_NULL_HANDLE)
-		vkDestroyRenderPass(m_context.device, m_context.renderPass, nullptr);
-	if (m_context.descriptorPool != VK_NULL_HANDLE)
-		vkDestroyDescriptorPool(m_context.device, m_context.descriptorPool, nullptr);	// + freeing <DescriptorSet>
-	if (m_context.descriptorSetLayout != VK_NULL_HANDLE)
-		vkDestroyDescriptorSetLayout(m_context.device, m_context.descriptorSetLayout, nullptr);
+	if (m_context.commandPool != VK_NULL_HANDLE)
+		vkDestroyCommandPool(m_context.device, m_context.commandPool, nullptr);			// + freeing <Commandbuffer>
+
 	if (m_context.semImgRendered != VK_NULL_HANDLE)
 		vkDestroySemaphore(m_context.device, m_context.semImgRendered, nullptr);
 	if (m_context.semSwapImgReceived != VK_NULL_HANDLE)
@@ -58,10 +89,48 @@ pje::renderer::RendererVK::~RendererVK() {
 		vkDestroyFence(m_context.device, m_context.fenceImgRendered, nullptr);
 	if (m_context.fenceSetupTask != VK_NULL_HANDLE)
 		vkDestroyFence(m_context.device, m_context.fenceSetupTask, nullptr);
+
+	for (auto& fb : m_context.renderPassFramebuffers) {
+		if (fb != VK_NULL_HANDLE)
+			vkDestroyFramebuffer(m_context.device, fb, nullptr);
+	}
+	for (auto& imgView : m_context.swapchainImgViews) {
+		if (imgView != VK_NULL_HANDLE)
+			vkDestroyImageView(m_context.device, imgView, nullptr);
+	}
+	if (m_context.swapchain != VK_NULL_HANDLE)
+		vkDestroySwapchainKHR(m_context.device, m_context.swapchain, nullptr);
+
+	if (m_context.rtDepth.imageView != VK_NULL_HANDLE)
+		vkDestroyImageView(m_context.device, m_context.rtDepth.imageView, nullptr);
+	if (m_context.rtDepth.memory != VK_NULL_HANDLE)
+		vkFreeMemory(m_context.device, m_context.rtDepth.memory, nullptr);
+	if (m_context.rtDepth.image != VK_NULL_HANDLE)
+		vkDestroyImage(m_context.device, m_context.rtDepth.image, nullptr);
+	if (m_context.rtMsaa.imageView != VK_NULL_HANDLE)
+		vkDestroyImageView(m_context.device, m_context.rtMsaa.imageView, nullptr);
+	if (m_context.rtMsaa.memory != VK_NULL_HANDLE)
+		vkFreeMemory(m_context.device, m_context.rtMsaa.memory, nullptr);
+	if (m_context.rtMsaa.image != VK_NULL_HANDLE)
+		vkDestroyImage(m_context.device, m_context.rtMsaa.image, nullptr);
+
+	if (m_context.pipeline != VK_NULL_HANDLE)
+		vkDestroyPipeline(m_context.device, m_context.pipeline, nullptr);
+	if (m_context.pipelineLayout != VK_NULL_HANDLE)
+		vkDestroyPipelineLayout(m_context.device, m_context.pipelineLayout, nullptr);
+	if (m_context.renderPass != VK_NULL_HANDLE)
+		vkDestroyRenderPass(m_context.device, m_context.renderPass, nullptr);
+
+	if (m_context.descriptorPool != VK_NULL_HANDLE)
+		vkDestroyDescriptorPool(m_context.device, m_context.descriptorPool, nullptr);	// + freeing <DescriptorSet>
+	if (m_context.descriptorSetLayout != VK_NULL_HANDLE)
+		vkDestroyDescriptorSetLayout(m_context.device, m_context.descriptorSetLayout, nullptr);
+
 	if (m_context.vertexModule != VK_NULL_HANDLE)
 		vkDestroyShaderModule(m_context.device, m_context.vertexModule, nullptr);
 	if (m_context.fragmentModule != VK_NULL_HANDLE)
 		vkDestroyShaderModule(m_context.device, m_context.fragmentModule, nullptr);
+
 	if (m_context.device != VK_NULL_HANDLE)
 		vkDestroyDevice(m_context.device, nullptr);										// + cleanup of <VkQueue>
 	if (m_context.surface != VK_NULL_HANDLE)
@@ -283,7 +352,6 @@ void pje::renderer::RendererVK::setSurfaceFormatForPhysicalDevice(VkSurfaceForma
 void pje::renderer::RendererVK::setDeviceAndQueue(VkQueueFlags requiredQueueAttributes) {
 	/* 1) Gathering data for VkDeviceCreateInfo */
 	bool foundQueueFamily = false;
-	uint32_t selectedQueueFamily;
 
 	uint32_t queueFamilyCount = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties(m_context.gpu, &queueFamilyCount, nullptr);
@@ -293,7 +361,7 @@ void pje::renderer::RendererVK::setDeviceAndQueue(VkQueueFlags requiredQueueAttr
 	for (uint32_t i = 0; i < queueFamilyCount; i++) {
 		if ((requiredQueueAttributes & queueFamilyProps[i].queueFlags) == requiredQueueAttributes) {
 			foundQueueFamily = true;
-			selectedQueueFamily = i;
+			m_context.deviceQueueFamilyIndex = i;
 			break;
 		}
 	}
@@ -306,7 +374,7 @@ void pje::renderer::RendererVK::setDeviceAndQueue(VkQueueFlags requiredQueueAttr
 	const float queuePrios[]{ 1.0f };
 
 	VkBool32 isPresentationOnSurfaceAvailable;
-	vkGetPhysicalDeviceSurfaceSupportKHR(m_context.gpu, selectedQueueFamily, m_context.surface, &isPresentationOnSurfaceAvailable);
+	vkGetPhysicalDeviceSurfaceSupportKHR(m_context.gpu, m_context.deviceQueueFamilyIndex, m_context.surface, &isPresentationOnSurfaceAvailable);
 	if (!isPresentationOnSurfaceAvailable) {
 		throw std::runtime_error("Selected queue family does not support presentation on given surface.");
 	}
@@ -316,7 +384,7 @@ void pje::renderer::RendererVK::setDeviceAndQueue(VkQueueFlags requiredQueueAttr
 	deviceQueueInfo.sType				= VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 	deviceQueueInfo.pNext				= nullptr;
 	deviceQueueInfo.flags				= 0;
-	deviceQueueInfo.queueFamilyIndex	= selectedQueueFamily;
+	deviceQueueInfo.queueFamilyIndex	= m_context.deviceQueueFamilyIndex;
 	deviceQueueInfo.queueCount			= 1;
 	deviceQueueInfo.pQueuePriorities	= queuePrios;
 
@@ -353,7 +421,7 @@ void pje::renderer::RendererVK::setDeviceAndQueue(VkQueueFlags requiredQueueAttr
 		throw std::runtime_error("Failed to set device.");
 
 	/* 5) Getting queue handle of created device */
-	vkGetDeviceQueue(m_context.device, selectedQueueFamily, 0, &m_context.deviceQueue);
+	vkGetDeviceQueue(m_context.device, m_context.deviceQueueFamilyIndex, 0, &m_context.deviceQueue);
 	if (m_context.deviceQueue != VK_NULL_HANDLE)
 		std::cout << "[VK] \tDevice queue was set." << std::endl;
 	else
@@ -404,41 +472,78 @@ void pje::renderer::RendererVK::setShaderProgram(std::string shaderName) {
 	std::cout << "[VK] \tShader program with " << m_context.shaderProgram.size() << " shaders was set." << std::endl;
 }
 
-void pje::renderer::RendererVK::setFence(VkFence& fence, bool isSignaled) {
-	if (fence != VK_NULL_HANDLE)
-		vkDestroyFence(m_context.device, fence, nullptr);
+void pje::renderer::RendererVK::setDescriptorSet(const std::vector<DescriptorSetElementVK>& elements) {
+	if (m_context.descriptorPool != VK_NULL_HANDLE)
+		throw std::runtime_error("Descriptor pool is already set!");
+	if (m_context.descriptorSetLayout != VK_NULL_HANDLE)
+		throw std::runtime_error("Descriptor set layout is already set!");
 
-	VkFenceCreateInfo info;
-	info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-	info.pNext = nullptr;
-	if (isSignaled)
-		info.flags = 1;
-	else
-		info.flags = 0;
+	/* 1) Descriptor Set Layout */
+	std::vector<VkDescriptorSetLayoutBinding> layoutBindings;
 
-	vkCreateFence(m_context.device, &info, nullptr, &fence);
-	if (fence == VK_NULL_HANDLE)
-		throw std::runtime_error("Failed to create fence.");
-	std::cout << "[VK] \tA fence was set." << std::endl;
-}
+	VkDescriptorSetLayoutBinding layoutBinding = {};
+	uint32_t index = 0;
 
-void pje::renderer::RendererVK::setSemaphore(VkSemaphore& sem) {
-	if (sem != VK_NULL_HANDLE)
-		vkDestroySemaphore(m_context.device, sem, nullptr);
+	layoutBinding.pImmutableSamplers	= nullptr;
+	for (const auto& element : elements) {
+		layoutBinding.binding			= index;
+		layoutBinding.descriptorType	= element.type;
+		layoutBinding.descriptorCount	= element.arraySize;
+		layoutBinding.stageFlags		= element.flagsMask;
 
-	VkSemaphoreCreateInfo info;
-	info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-	info.pNext = nullptr;
-	info.flags = 0;
+		layoutBindings.push_back(layoutBinding);
+		++index;
+	}
 
-	vkCreateSemaphore(m_context.device, &info, nullptr, &sem);
-	if (sem == VK_NULL_HANDLE)
-		throw std::runtime_error("Failed to create semaphore.");
-	std::cout << "[VK] \tA semaphore was set." << std::endl;
-}
+	VkDescriptorSetLayoutCreateInfo layoutCreateInfo = {};
+	layoutCreateInfo.sType			= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutCreateInfo.pNext			= nullptr;
+	layoutCreateInfo.flags			= 0;
+	layoutCreateInfo.bindingCount	= layoutBindings.size();
+	layoutCreateInfo.pBindings		= layoutBindings.data();
+	vkCreateDescriptorSetLayout(m_context.device, &layoutCreateInfo, nullptr, &m_context.descriptorSetLayout);
 
-void pje::renderer::RendererVK::setDescriptorSet() {
-	// TODO
+	if (m_context.descriptorSetLayout == VK_NULL_HANDLE)
+		throw std::runtime_error("Failed to create descriptor set layout.");
+	std::cout << "[VK] \tDescriptor set layout was set." << std::endl;
+
+	/* 2) Descriptor Pool */
+	std::vector<VkDescriptorPoolSize> poolElements;
+
+	for (const auto& element : elements) {
+		uint32_t amountOfThisType = 0;
+		for (const auto& cmpElement : elements) {
+			if (element.type == cmpElement.type)
+				++amountOfThisType;
+		}
+		poolElements.push_back(VkDescriptorPoolSize{element.type, amountOfThisType});
+	}
+
+	VkDescriptorPoolCreateInfo poolCreateInfo;
+	poolCreateInfo.sType			= VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolCreateInfo.pNext			= nullptr;
+	poolCreateInfo.flags			= VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+	poolCreateInfo.maxSets			= 1;
+	poolCreateInfo.poolSizeCount	= poolElements.size();
+	poolCreateInfo.pPoolSizes		= poolElements.data();
+	vkCreateDescriptorPool(m_context.device, &poolCreateInfo, nullptr, &m_context.descriptorPool);
+
+	if (m_context.descriptorPool == VK_NULL_HANDLE)
+		throw std::runtime_error("Failed to create descriptor pool.");
+	std::cout << "[VK] \tDescriptor pool was set." << std::endl;
+
+	/* 3) Descriptor Set */
+	VkDescriptorSetAllocateInfo allocateInfo;
+	allocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocateInfo.pNext = nullptr;
+	allocateInfo.descriptorPool = m_context.descriptorPool;
+	allocateInfo.descriptorSetCount = 1;
+	allocateInfo.pSetLayouts = &m_context.descriptorSetLayout;
+	vkAllocateDescriptorSets(m_context.device, &allocateInfo, &m_context.descriptorSet);
+
+	if (m_context.descriptorSet == VK_NULL_HANDLE)
+		throw std::runtime_error("Failed to create descriptor set.");
+	std::cout << "[VK] \tDescriptor set was set." << std::endl;
 }
 
 void pje::renderer::RendererVK::setRenderpass() {
@@ -491,16 +596,16 @@ void pje::renderer::RendererVK::setRenderpass() {
 
 	/* 1 renderpass <-> 1+ subpasses */
 	VkSubpassDescription subpassDescription;
-	subpassDescription.flags = 0;
-	subpassDescription.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpassDescription.colorAttachmentCount = 1;
-	subpassDescription.pColorAttachments = &attachmentRefMSAA;
-	subpassDescription.pDepthStencilAttachment = &attachmentRefDepth;
-	subpassDescription.pResolveAttachments = &attachmentRefResolve;
-	subpassDescription.preserveAttachmentCount = 0;
-	subpassDescription.pPreserveAttachments = nullptr;
-	subpassDescription.inputAttachmentCount = 0;
-	subpassDescription.pInputAttachments = nullptr;
+	subpassDescription.flags					= 0;
+	subpassDescription.pipelineBindPoint		= VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpassDescription.colorAttachmentCount		= 1;
+	subpassDescription.pColorAttachments		= &attachmentRefMSAA;
+	subpassDescription.pDepthStencilAttachment	= &attachmentRefDepth;
+	subpassDescription.pResolveAttachments		= &attachmentRefResolve;
+	subpassDescription.preserveAttachmentCount	= 0;
+	subpassDescription.pPreserveAttachments		= nullptr;
+	subpassDescription.inputAttachmentCount		= 0;
+	subpassDescription.pInputAttachments		= nullptr;
 
 	/* Dependencies: synchronization between subpasses */
 	VkSubpassDependency depOrderedResolves;
@@ -540,6 +645,202 @@ void pje::renderer::RendererVK::setRenderpass() {
 	if (m_context.renderPass == VK_NULL_HANDLE)
 		throw std::runtime_error("Failed to create renderpass.");
 	std::cout << "[VK] \tRenderpass was set." << std::endl;
+}
+
+void pje::renderer::RendererVK::setRendertarget(ImageVK& rt, VkExtent3D imgSize, VkFormat format, VkImageUsageFlags usage, VkImageAspectFlags aspectMask) {
+	rt.format = format;
+	
+	if (rt.image != VK_NULL_HANDLE || rt.memory != VK_NULL_HANDLE || rt.imageView != VK_NULL_HANDLE) {
+		vkDestroyImageView(m_context.device, rt.imageView, nullptr);
+		vkFreeMemory(m_context.device, rt.memory, nullptr);
+		vkDestroyImage(m_context.device, rt.image, nullptr);
+	}
+
+	/* 1) Image */
+	VkImageCreateInfo imageInfo;
+	imageInfo.sType					= VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageInfo.pNext					= nullptr;
+	imageInfo.flags					= 0;
+	imageInfo.imageType				= VkImageType::VK_IMAGE_TYPE_2D;
+	imageInfo.format				= rt.format;
+	imageInfo.extent				= imgSize;
+	imageInfo.mipLevels				= 1;
+	imageInfo.arrayLayers			= 1;
+	imageInfo.samples				= m_msaaFactor;
+	imageInfo.tiling				= VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
+	imageInfo.usage					= usage;
+	imageInfo.sharingMode			= VkSharingMode::VK_SHARING_MODE_EXCLUSIVE;
+	imageInfo.queueFamilyIndexCount = 0;
+	imageInfo.pQueueFamilyIndices	= nullptr;
+	imageInfo.initialLayout			= VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
+	vkCreateImage(m_context.device, &imageInfo, nullptr, &rt.image);
+
+	if (rt.image == VK_NULL_HANDLE)
+		throw std::runtime_error("Failed to set rendertarget's VkImage.");
+
+	/* 2) Memory */
+	VkMemoryRequirements memReq;
+	vkGetImageMemoryRequirements(m_context.device, rt.image, &memReq);
+
+	rt.memory = allocateMemory(memReq, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	vkBindImageMemory(m_context.device, rt.image, rt.memory, 0);
+
+	/* 3) Image View */
+	VkImageViewCreateInfo viewInfo;
+	viewInfo.sType				= VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfo.pNext				= nullptr;
+	viewInfo.flags				= 0;
+	viewInfo.image				= rt.image;
+	viewInfo.viewType			= VK_IMAGE_VIEW_TYPE_2D;
+	viewInfo.format				= rt.format;
+	viewInfo.components			= VkComponentMapping{ 
+		VK_COMPONENT_SWIZZLE_IDENTITY	// r,g,b,a stay as their identity
+	};
+	viewInfo.subresourceRange	= VkImageSubresourceRange{
+		aspectMask,						// lets driver know what this is used for
+		0,								// for mipmap
+		1,								// -||-
+		0,								// for specifying a layer in VkImage
+		1								// -||-
+	};
+	vkCreateImageView(m_context.device, &viewInfo, nullptr, &rt.imageView);
+
+	if (rt.imageView == VK_NULL_HANDLE)
+		throw std::runtime_error("Failed to set rendertarget's VkImageView.");
+	std::cout << "[VK] \tA rendertarget was set." << std::endl;
+}
+
+void pje::renderer::RendererVK::setSwapchain(VkExtent2D imgSize) {
+	/* 1) General Swapchain (VkImage + VkMemory managed by VkSwapchainKHR) */
+	VkSwapchainCreateInfoKHR swapchainInfo;
+	swapchainInfo.sType					= VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	swapchainInfo.pNext					= nullptr;
+	swapchainInfo.flags					= 0;
+	swapchainInfo.surface				= m_context.surface;
+	swapchainInfo.minImageCount			= m_context.surfaceImageCount;
+	swapchainInfo.imageFormat			= m_context.surfaceFormat.format;
+	swapchainInfo.imageColorSpace		= m_context.surfaceFormat.colorSpace;
+	swapchainInfo.imageExtent			= imgSize;
+	swapchainInfo.imageArrayLayers		= 1;
+	swapchainInfo.imageUsage			= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	swapchainInfo.imageSharingMode		= VK_SHARING_MODE_EXCLUSIVE;
+	swapchainInfo.queueFamilyIndexCount = 0;
+	swapchainInfo.pQueueFamilyIndices	= nullptr;
+	swapchainInfo.preTransform			= VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+	swapchainInfo.compositeAlpha		= VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	swapchainInfo.clipped				= VK_TRUE;
+	swapchainInfo.oldSwapchain			= VK_NULL_HANDLE;
+	if (m_vsync)
+		swapchainInfo.presentMode		= VK_PRESENT_MODE_FIFO_KHR;
+	else
+		swapchainInfo.presentMode		= VK_PRESENT_MODE_IMMEDIATE_KHR;
+	vkCreateSwapchainKHR(m_context.device, &swapchainInfo, nullptr, &m_context.swapchain);
+
+	if (m_context.swapchain == VK_NULL_HANDLE)
+		throw std::runtime_error("Failed to set a swapchain.");
+
+	/* 2) Getting VkImage and VkImageView */
+	auto swapchainImages = std::vector<VkImage>(m_context.surfaceImageCount);
+	vkGetSwapchainImagesKHR(m_context.device, m_context.swapchain, &m_context.surfaceImageCount, swapchainImages.data());
+
+	VkImageViewCreateInfo viewInfo;
+	viewInfo.sType				= VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfo.pNext				= nullptr;
+	viewInfo.flags				= 0;
+	viewInfo.viewType			= VK_IMAGE_VIEW_TYPE_2D;
+	viewInfo.format				= m_context.surfaceFormat.format;
+	viewInfo.components			= VkComponentMapping{ 
+		VK_COMPONENT_SWIZZLE_IDENTITY 
+	};
+	viewInfo.subresourceRange	= VkImageSubresourceRange{
+		VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1
+	};
+
+	m_context.swapchainImgViews = std::vector<VkImageView>(m_context.surfaceImageCount);
+	for (uint32_t i = 0; i < m_context.surfaceImageCount; i++) {
+		viewInfo.image = swapchainImages[i];
+		vkCreateImageView(m_context.device, &viewInfo, nullptr, &m_context.swapchainImgViews[i]);
+		if (m_context.swapchainImgViews[i] == VK_NULL_HANDLE)
+			throw std::runtime_error("Failed to create image view for swapchain.");
+	}
+	std::cout << "[VK] \tSwapchain was set." << std::endl;
+}
+
+void pje::renderer::RendererVK::setFramebuffers(uint32_t renderPassAttachmentCount) {
+	m_context.renderPassFramebuffers = std::vector<VkFramebuffer>(m_context.surfaceImageCount);
+	VkFramebufferCreateInfo fbInfo;
+	fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	fbInfo.pNext = nullptr;
+	fbInfo.flags = 0;
+	fbInfo.renderPass = m_context.renderPass;
+	fbInfo.width = m_renderWidth;
+	fbInfo.height = m_renderHeight;
+	fbInfo.layers = 1;
+
+	fbInfo.attachmentCount = renderPassAttachmentCount;
+	for (uint32_t i = 0; i < m_context.surfaceImageCount; i++) {
+		std::vector<VkImageView> targets{
+			m_context.rtMsaa.imageView,
+			m_context.rtDepth.imageView,
+			m_context.swapchainImgViews[i]
+		};
+		fbInfo.pAttachments = targets.data();
+		vkCreateFramebuffer(m_context.device, &fbInfo, nullptr, &m_context.renderPassFramebuffers[i]);
+		if (m_context.renderPassFramebuffers[i] == VK_NULL_HANDLE)
+			throw std::runtime_error("Failed to create framebuffer.");
+	}
+	std::cout << "[VK] \tFramebuffers were set." << std::endl;
+}
+
+void pje::renderer::RendererVK::setFence(VkFence& fence, bool isSignaled) {
+	if (fence != VK_NULL_HANDLE)
+		vkDestroyFence(m_context.device, fence, nullptr);
+
+	VkFenceCreateInfo info;
+	info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	info.pNext = nullptr;
+	if (isSignaled)
+		info.flags = 1;
+	else
+		info.flags = 0;
+
+	vkCreateFence(m_context.device, &info, nullptr, &fence);
+	if (fence == VK_NULL_HANDLE)
+		throw std::runtime_error("Failed to create fence.");
+	std::cout << "[VK] \tA fence was set." << std::endl;
+}
+
+void pje::renderer::RendererVK::setSemaphore(VkSemaphore& sem) {
+	if (sem != VK_NULL_HANDLE)
+		vkDestroySemaphore(m_context.device, sem, nullptr);
+
+	VkSemaphoreCreateInfo info;
+	info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	info.pNext = nullptr;
+	info.flags = 0;
+
+	vkCreateSemaphore(m_context.device, &info, nullptr, &sem);
+	if (sem == VK_NULL_HANDLE)
+		throw std::runtime_error("Failed to create semaphore.");
+	std::cout << "[VK] \tA semaphore was set." << std::endl;
+}
+
+void pje::renderer::RendererVK::setCommandPool() {
+	VkCommandPoolCreateInfo poolInfo;
+	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	poolInfo.pNext = nullptr;
+	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	poolInfo.queueFamilyIndex = m_context.deviceQueueFamilyIndex;
+	vkCreateCommandPool(m_context.device, &poolInfo, nullptr, &m_context.commandPool);
+	
+	if (m_context.commandPool == VK_NULL_HANDLE)
+		throw std::runtime_error("Failed to set command pool.");
+	std::cout << "[VK] \tCommand pool was set." << std::endl;
+}
+
+void pje::renderer::RendererVK::setCommandbuffer() {
+	// TODO
+
 }
 
 void pje::renderer::RendererVK::buildPipeline() {
@@ -600,6 +901,7 @@ void pje::renderer::RendererVK::buildPipeline() {
 	rasterizationInfo.depthBiasSlopeFactor		= 0.0f;
 	rasterizationInfo.lineWidth					= 1.0f;
 
+	/* Color Blending => turned off */
 	VkPipelineColorBlendAttachmentState colorBlendAttachment;
 	colorBlendAttachment.blendEnable			= VK_FALSE;
 	colorBlendAttachment.srcColorBlendFactor	= VK_BLEND_FACTOR_SRC_ALPHA;
@@ -641,18 +943,6 @@ void pje::renderer::RendererVK::buildPipeline() {
 	depthStencilStateInfo.minDepthBounds	= 0.0f;
 	depthStencilStateInfo.maxDepthBounds	= 1.0f;
 
-	/* Defining dynamic members for VkGraphicsPipelineCreateInfo */
-	std::array<VkDynamicState, 2> dynamicStates{
-		VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR
-	};
-
-	VkPipelineDynamicStateCreateInfo dynamicStateInfo;
-	dynamicStateInfo.sType				= VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-	dynamicStateInfo.pNext				= nullptr;
-	dynamicStateInfo.flags				= 0;
-	dynamicStateInfo.dynamicStateCount	= dynamicStates.size();
-	dynamicStateInfo.pDynamicStates		= dynamicStates.data();
-
 	/* PipelineLayout: Declares variables of programmable shaders */
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo;
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -679,7 +969,7 @@ void pje::renderer::RendererVK::buildPipeline() {
 	pipelineInfo.pMultisampleState		= &multisampleInfo;
 	pipelineInfo.pDepthStencilState		= &depthStencilStateInfo;
 	pipelineInfo.pColorBlendState		= &colorBlendInfo;
-	pipelineInfo.pDynamicState			= &dynamicStateInfo;
+	pipelineInfo.pDynamicState			= nullptr;
 	pipelineInfo.layout					= m_context.pipelineLayout;
 	pipelineInfo.renderPass				= m_context.renderPass;
 	pipelineInfo.subpass				= 0;
@@ -799,4 +1089,36 @@ std::vector<char> pje::renderer::RendererVK::loadShader(const std::string& filen
 	else {
 		throw std::runtime_error("Failed to load a shader into RAM!");
 	}
+}
+
+VkDeviceMemory pje::renderer::RendererVK::allocateMemory(VkMemoryRequirements memReq, VkMemoryPropertyFlags flagMask) {
+	/* 1) Searching memory type index of choosen GPU */
+	bool foundIndex				= false;
+	uint32_t memoryTypeIndex	= 0;
+
+	VkPhysicalDeviceMemoryProperties memProps;
+	vkGetPhysicalDeviceMemoryProperties(m_context.gpu, &memProps);
+
+	for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
+		if ((memReq.memoryTypeBits & (1 << i)) && (memProps.memoryTypes[i].propertyFlags & flagMask) == flagMask) {
+			foundIndex		= true;
+			memoryTypeIndex = i;
+			break;
+		}
+	}
+
+	if (!foundIndex)
+		throw std::runtime_error("No valid memory type was found while allocating memory for some GPU ressource.");
+
+	/* 2) Allocating memory */
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+
+	VkMemoryAllocateInfo allocInfo;
+	allocInfo.sType				= VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.pNext				= nullptr;
+	allocInfo.allocationSize	= memReq.size;
+	allocInfo.memoryTypeIndex	= memoryTypeIndex;
+	vkAllocateMemory(m_context.device, &allocInfo, nullptr, &memory);
+
+	return memory;
 }

@@ -21,6 +21,23 @@
 
 namespace pje::renderer {
 
+	/* DescriptorSetElement - needed at RendererVK::setDescriptorSet to define shader ressources */
+	struct DescriptorSetElementVK {
+		VkDescriptorType		type;
+		uint32_t				arraySize;
+		VkShaderStageFlagBits	flagsMask;
+	};
+
+	/* ImageVK - container for handling images/rendertargets */
+	struct ImageVK {
+		VkFormat format			= VkFormat::VK_FORMAT_UNDEFINED;
+		VkImage image			= VK_NULL_HANDLE;
+		VkDeviceMemory memory	= VK_NULL_HANDLE;
+		VkImageView imageView	= VK_NULL_HANDLE;
+		unsigned int mipCount	= 0;
+	};
+
+	/* ContextVK - holds all manually managed Vulkan ressources */
 	struct ContextVK {
 		VkInstance										instance				= VK_NULL_HANDLE;
 		std::vector<std::string>						instanceLayers;
@@ -34,15 +51,11 @@ namespace pje::renderer {
 		VkDevice										device					= VK_NULL_HANDLE;
 		std::vector<std::string>						deviceExtensions;
 		VkQueue											deviceQueue				= VK_NULL_HANDLE;
+		uint32_t										deviceQueueFamilyIndex  = std::numeric_limits<uint32_t>::max();
 
 		VkShaderModule									vertexModule			= VK_NULL_HANDLE;
 		VkShaderModule									fragmentModule			= VK_NULL_HANDLE;
 		std::vector<VkPipelineShaderStageCreateInfo>	shaderProgram;
-
-		VkFence											fenceSetupTask			= VK_NULL_HANDLE;
-		VkFence											fenceImgRendered		= VK_NULL_HANDLE;
-		VkSemaphore										semSwapImgReceived		= VK_NULL_HANDLE;
-		VkSemaphore										semImgRendered			= VK_NULL_HANDLE;
 
 		VkDescriptorSetLayout							descriptorSetLayout		= VK_NULL_HANDLE;
 		VkDescriptorPool								descriptorPool			= VK_NULL_HANDLE;
@@ -51,13 +64,29 @@ namespace pje::renderer {
 		VkRenderPass									renderPass				= VK_NULL_HANDLE;
 		VkPipelineLayout								pipelineLayout			= VK_NULL_HANDLE;
 		VkPipeline										pipeline				= VK_NULL_HANDLE;
+
+		VkSwapchainKHR									swapchain				= VK_NULL_HANDLE;
+		std::vector<VkImageView>						swapchainImgViews;
+		ImageVK											rtMsaa;
+		ImageVK											rtDepth;
+		std::vector<VkFramebuffer>						renderPassFramebuffers;
+
+		VkFence											fenceSetupTask			= VK_NULL_HANDLE;
+		VkFence											fenceImgRendered		= VK_NULL_HANDLE;
+		VkSemaphore										semSwapImgReceived		= VK_NULL_HANDLE;
+		VkSemaphore										semImgRendered			= VK_NULL_HANDLE;
+
+		VkCommandPool									commandPool				= VK_NULL_HANDLE;
+		std::vector<VkCommandBuffer>					cbsRendering;
+		VkCommandBuffer									cbStaging				= VK_NULL_HANDLE;
+		VkCommandBuffer									cbMipmapping			= VK_NULL_HANDLE;
 	};
 
 	/* RendererVK - Vulkan powered renderer for demoPerformance */
 	class RendererVK final : public pje::renderer::RendererInterface {
 	public:
 		RendererVK() = delete;
-		RendererVK(const pje::engine::ArgsParser& parser, GLFWwindow* const window);
+		RendererVK(const pje::engine::ArgsParser& parser, GLFWwindow* const window, pje::engine::types::LSysObject renderable);
 		~RendererVK();
 		std::string getApiVersion();
 
@@ -78,20 +107,26 @@ namespace pje::renderer {
 			VkPhysicalDeviceType					gpuType,
 			VkQueueFlags							requiredQueueAttributes,
 			uint32_t								requiredSurfaceImages,
-			const std::vector<VkSurfaceFormatKHR>& formatOptions
+			const std::vector<VkSurfaceFormatKHR>&	formatOptions
 		);
 		void setSurfaceFormatForPhysicalDevice(VkSurfaceFormatKHR format);
 		void setDeviceAndQueue(VkQueueFlags requiredQueueAttributes);
 		void setShaderModule(VkShaderModule& shaderModule, const std::vector<char>& shaderCode);
 		void setShaderProgram(std::string shaderName);
+		void setDescriptorSet(const std::vector<DescriptorSetElementVK>& elements);
+		void setRenderpass();
+		void setRendertarget(ImageVK& rt, VkExtent3D imgSize, VkFormat format, VkImageUsageFlags usage, VkImageAspectFlags aspectMask);
+		void setSwapchain(VkExtent2D imgSize);
+		void setFramebuffers(uint32_t renderPassAttachmentCount);
 		void setFence(VkFence& fence, bool isSignaled);
 		void setSemaphore(VkSemaphore& sem);
-		void setDescriptorSet();
-		void setRenderpass();
+		void setCommandPool();
+		void setCommandbuffer();
 		void buildPipeline();
 		bool requestLayer(RequestLevel level, std::string layerName);
 		bool requestExtension(RequestLevel level, std::string extensionName);
 		void requestGlfwInstanceExtensions();
 		std::vector<char> loadShader(const std::string& filename);
+		VkDeviceMemory allocateMemory(VkMemoryRequirements memReq, VkMemoryPropertyFlags flagMask);
 	};
 }
