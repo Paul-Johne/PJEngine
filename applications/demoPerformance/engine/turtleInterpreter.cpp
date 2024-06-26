@@ -143,14 +143,18 @@ void pje::engine::PlantTurtle::deployPrimitive(const pje::engine::types::Primiti
 
 	/* creates BoneRef and an offset for the primitive's vertices to access the right BoneRef in shader */
 	glm::uint offset;
+	glm::uint count;
 	if (needsBoneRef) {
 		/* create new BoneRef for all vertices of this primitive */
 		m_renderable.m_boneRefs.push_back(createRef());
 		/* offset for m_boneAttrib of each vertex of this primitive */
-		offset = m_renderable.m_boneRefs.size() - 1;
+		offset	= m_renderable.m_boneRefs.size() - 1;
+		/* PROJECT LIMITATION: max 1 BoneRef per Vertex */
+		count	= 1;
 	}
 	else {
-		offset = 0;
+		offset	= 0;
+		count	= 0;
 	}
 
 	/* vertex: primitive space => model space */
@@ -164,8 +168,8 @@ void pje::engine::PlantTurtle::deployPrimitive(const pje::engine::types::Primiti
 				v.m_pos			= glm::vec3(m_turtlePosMat * glm::vec4(v.m_pos, 1.0f));
 				// adjusting normal after transforming normal
 				v.m_normal		= glm::normalize(glm::transpose(glm::inverse(m_turtlePosMat)) * glm::vec4(v.m_normal, 0.0f));
-				// uvec2(<first relevant boneRef>, <boneRefsCount for this vertex>) | PROJECT LIMITATION: count = 1 (1 BoneRef per Vertex)
-				v.m_boneAttrib	= glm::uvec2(offset, 1);
+				// uvec2(<first relevant boneRef>, <boneRefsCount for this vertex>) | 
+				v.m_boneAttrib	= glm::uvec2(offset, count);
 			}
 		);
 	}
@@ -205,7 +209,7 @@ pje::engine::types::Bone pje::engine::PlantTurtle::createBone() {
 pje::engine::types::BoneRef pje::engine::PlantTurtle::createRef() {
 	/* BoneRef(boneId, weight) */
 	return pje::engine::types::BoneRef{
-		m_renderable.m_bones.size() - 1,
-		1.0f								// PROJECT LIMITATION: 1 vertex <-> 1 bone
+		static_cast<uint32_t>(m_renderable.m_bones.size() - 1),
+		1.0f // PROJECT LIMITATION: 1 vertex <-> 1 bone
 	};
 }

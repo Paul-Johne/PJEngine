@@ -66,14 +66,17 @@ int main(int argc, char* argv[]) {
 
 	/* GLFW window */
 	if (glfwInit() == GLFW_TRUE) {
-		/* No window context is allowed for Vulkan since it's managed manually by design */
-		if (parser->m_graphicsAPI.find("vulkan") != std::string::npos)
+		/* Vulkan */
+		if (parser->m_graphicsAPI.find("vulkan") != std::string::npos) {
+			/* No window context is allowed for Vulkan since it's managed manually by design */
 			glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+		}
+		/* OpenGL */
 		else if (parser->m_graphicsAPI.find("opengl") != std::string::npos) {
 			glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
 			glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
 			if (!parser->m_vsync)
-				/* Expecting vsync as default in OpenGL/GLFW */
+				/* Expecting vsync as default in OpenGL/GLFW => changing vsync to false */
 				glfwSwapInterval(0);
 		}
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
@@ -90,20 +93,75 @@ int main(int argc, char* argv[]) {
 		return -1;
 	}
 
+	/* Scene preparation */
+	plantTurtle->m_renderable.placeObjectInWorld(glm::vec3(0.0f), -10.0f, glm::vec3(1.0f));
+	plantTurtle->m_renderable.placeCamera(glm::vec3(0.0f, 1.0f, 2.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	if (parser->m_graphicsAPI.find("vulkan") != std::string::npos)
+		plantTurtle->m_renderable.setPerspective(
+			glm::radians(60.0f), parser->m_width / parser->m_height, 0.1f, 100.0f, pje::engine::types::LSysObject::API::Vulkan
+		);
+	else if (parser->m_graphicsAPI.find("opengl") != std::string::npos)
+		plantTurtle->m_renderable.setPerspective(
+			glm::radians(60.0f), parser->m_width / parser->m_height, 0.1f, 100.0f, pje::engine::types::LSysObject::API::OpenGL
+		);
+	plantTurtle->m_renderable.updateMVP();
+	auto startTime = std::chrono::steady_clock::now();
+
 	/* API-specific part: Vulkan/OpenGL */
 	try {
-		if (parser->m_graphicsAPI.find("opengl") != std::string::npos) {
+		/* Vulkan */
+		if (parser->m_graphicsAPI.find("vulkan") != std::string::npos) {
+			std::unique_ptr<pje::renderer::RendererVK> vkRenderer =
+				std::make_unique<pje::renderer::RendererVK>(*parser, window, plantTurtle->m_renderable);
+
+			/* Engine data --> Vulkan buffer for shaders */
+			vkRenderer->uploadRenderable(plantTurtle->m_renderable);
+			vkRenderer->uploadTextureOf(plantTurtle->m_renderable, false, pje::renderer::RendererVK::TextureType::Albedo);
+			vkRenderer->uploadBuffer(plantTurtle->m_renderable, vkRenderer->m_buffUniformMVP, pje::renderer::RendererVK::BufferType::UniformMVP);
+			vkRenderer->uploadBuffer(plantTurtle->m_renderable, vkRenderer->m_buffStorageBoneRefs, pje::renderer::RendererVK::BufferType::StorageBoneRefs);
+			vkRenderer->uploadBuffer(plantTurtle->m_renderable, vkRenderer->m_buffStorageBones, pje::renderer::RendererVK::BufferType::StorageBones);
+
+			/* Binding shader resources */
+			vkRenderer->bindToShader(vkRenderer->m_buffUniformMVP, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+			vkRenderer->bindToShader(vkRenderer->m_buffStorageBoneRefs, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+			vkRenderer->bindToShader(vkRenderer->m_buffStorageBones, 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+			vkRenderer->bindToShader(vkRenderer->m_texAlbedo, 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+			/* Renderloop */
+			while (!glfwWindowShouldClose(window)) {
+				auto deltaTime =
+					std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startTime).count() / 1000.0f;
+
+				/* Updating shader resources */
+				plantTurtle->m_renderable.animWindBlow(deltaTime, 0.5f);
+				vkRenderer->updateBuffer(plantTurtle->m_renderable, vkRenderer->m_buffStorageBones, pje::renderer::RendererVK::BufferType::StorageBones);
+
+				vkRenderer->renderIn(window, plantTurtle->m_renderable);
+				glfwPollEvents();
+			}
+		}
+		/* OpenGL */
+		else if (parser->m_graphicsAPI.find("opengl") != std::string::npos) {
 			if (gl3wInit()) {
 				glfwTerminate();
 				return -4;
 			}
 			std::unique_ptr<pje::renderer::RendererGL> glRenderer = 
 				std::make_unique<pje::renderer::RendererGL>(*parser, window, plantTurtle->m_renderable);
+
+			/* Renderloop */
+			while (!glfwWindowShouldClose(window)) {
+				auto deltaTime = 
+					std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startTime).count() / 1000.0f;
+
+				/* Updating shader resources */
+				plantTurtle->m_renderable.animWindBlow(deltaTime, 0.5f);
+
+				glRenderer->renderIn(window);
+				glfwPollEvents();
+			}
 		}
-		else if (parser->m_graphicsAPI.find("vulkan") != std::string::npos) {
-			std::unique_ptr<pje::renderer::RendererVK> vkRenderer = 
-				std::make_unique<pje::renderer::RendererVK>(*parser, window, plantTurtle->m_renderable);
-		}
+		/* Unknown environment */
 		else {
 			std::cout << "[PJE] \tNO GRAPHICS API WERE SELECTED!" << std::endl;
 			glfwTerminate();

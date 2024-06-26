@@ -15,29 +15,61 @@
 	#include <GLFW/glfw3.h>
 
 /* Project Files */
-	#include "../engine/rendererInterface.h"
 	#include "../engine/argsParser.h"
 	#include "../engine/pjeBuffers.h"
 
 namespace pje::renderer {
 
-	/* DescriptorSetElement - needed at RendererVK::setDescriptorSet to define shader ressources */
+	/* DescriptorSetElement - needed at RendererVK::setDescriptorSet to define shader resources */
 	struct DescriptorSetElementVK {
 		VkDescriptorType		type;
 		uint32_t				arraySize;
 		VkShaderStageFlagBits	flagsMask;
 	};
 
+	/* BufferVK - container for handling VBOs/IBOs/Uniform Buffers/Storage Buffers */
+	struct BufferVK {
+		VkDevice hostDevice		= VK_NULL_HANDLE;
+
+		VkBuffer buffer			= VK_NULL_HANDLE;
+		VkDeviceMemory memory	= VK_NULL_HANDLE;
+		VkDeviceSize size		= 0;
+
+		~BufferVK() {
+			if (hostDevice != VK_NULL_HANDLE) {
+				if (memory != VK_NULL_HANDLE)
+					vkFreeMemory(hostDevice, memory, nullptr);
+				if (buffer != VK_NULL_HANDLE)
+					vkDestroyBuffer(hostDevice, buffer, nullptr);
+				hostDevice = VK_NULL_HANDLE;
+			}
+		}
+	};
+
 	/* ImageVK - container for handling images/rendertargets */
 	struct ImageVK {
+		VkDevice hostDevice		= VK_NULL_HANDLE;
+
 		VkFormat format			= VkFormat::VK_FORMAT_UNDEFINED;
 		VkImage image			= VK_NULL_HANDLE;
 		VkDeviceMemory memory	= VK_NULL_HANDLE;
 		VkImageView imageView	= VK_NULL_HANDLE;
 		unsigned int mipCount	= 0;
+
+		~ImageVK() {
+			if (hostDevice != VK_NULL_HANDLE) {
+				if (imageView != VK_NULL_HANDLE)
+					vkDestroyImageView(hostDevice, imageView, nullptr);
+				if (memory != VK_NULL_HANDLE)
+					vkFreeMemory(hostDevice, memory, nullptr);
+				if (image != VK_NULL_HANDLE)
+					vkDestroyImage(hostDevice, image, nullptr);
+				hostDevice = VK_NULL_HANDLE;
+			}
+		}
 	};
 
-	/* ContextVK - holds all manually managed Vulkan ressources */
+	/* ContextVK - holds all manually managed Vulkan resources */
 	struct ContextVK {
 		VkInstance										instance				= VK_NULL_HANDLE;
 		std::vector<std::string>						instanceLayers;
@@ -60,6 +92,7 @@ namespace pje::renderer {
 		VkDescriptorSetLayout							descriptorSetLayout		= VK_NULL_HANDLE;
 		VkDescriptorPool								descriptorPool			= VK_NULL_HANDLE;
 		VkDescriptorSet									descriptorSet			= VK_NULL_HANDLE;
+		VkSampler										texSampler				= VK_NULL_HANDLE;
 
 		VkRenderPass									renderPass				= VK_NULL_HANDLE;
 		VkPipelineLayout								pipelineLayout			= VK_NULL_HANDLE;
@@ -80,27 +113,54 @@ namespace pje::renderer {
 		std::vector<VkCommandBuffer>					cbsRendering;
 		VkCommandBuffer									cbStaging				= VK_NULL_HANDLE;
 		VkCommandBuffer									cbMipmapping			= VK_NULL_HANDLE;
+
+		BufferVK										buffStaging;
+		BufferVK										buffVertices;
+		BufferVK										buffIndices;
 	};
 
 	/* RendererVK - Vulkan powered renderer for demoPerformance */
-	class RendererVK final : public pje::renderer::RendererInterface {
+	class RendererVK final {
 	public:
+		enum class TextureType	{ Albedo };
+		enum class BufferType	{ UniformMVP, StorageBoneRefs, StorageBones };
+
+		ImageVK		m_texAlbedo;
+		BufferVK	m_buffUniformMVP;
+		BufferVK	m_buffStorageBoneRefs;
+		BufferVK	m_buffStorageBones;
+
 		RendererVK() = delete;
-		RendererVK(const pje::engine::ArgsParser& parser, GLFWwindow* const window, pje::engine::types::LSysObject renderable);
+		RendererVK(const pje::engine::ArgsParser& parser, GLFWwindow* const window, const pje::engine::types::LSysObject& renderable);
 		~RendererVK();
-		std::string getApiVersion();
+
+		/** Methods for app.cpp **/
+		/* 1/4: Uploading */
+		void uploadRenderable(const pje::engine::types::LSysObject& renderable);
+		void uploadTextureOf(const pje::engine::types::LSysObject& renderable, bool genMipmaps, TextureType type);
+		void uploadBuffer(const pje::engine::types::LSysObject& renderable, BufferVK& m_VarRaw, BufferType type);
+		/* 2/4: Binding shader resources */
+		void bindToShader(const BufferVK& buffer, uint32_t dstBinding, VkDescriptorType descType);
+		void bindToShader(const ImageVK& image, uint32_t dstBinding, VkDescriptorType descType);
+		/* 3/4: Rendering */
+		void renderIn(GLFWwindow* window, const pje::engine::types::LSysObject& renderable);
+		/* 4/4: Updating */
+		void updateBuffer(const pje::engine::types::LSysObject& renderable, BufferVK& m_Var, BufferType type);
 
 	private:
-		enum class RequestLevel { Instance, Device };
-		enum class AnisotropyLevel { Disabled, TWOx, FOURx, EIGHTx, SIXTEENx };
+		enum class RequestLevel		{ Instance, Device };
+		enum class AnisotropyLevel	{ Disabled, TWOx, FOURx, EIGHTx, SIXTEENx };
 
 		ContextVK				m_context;
 		uint16_t				m_renderWidth;
 		uint16_t				m_renderHeight;
+		bool					m_windowIconified;
 		bool					m_vsync;
 		AnisotropyLevel			m_anisotropyLevel;
 		VkSampleCountFlagBits	m_msaaFactor;
+		uint8_t					m_instanceCount;
 
+		std::string getApiVersion();
 		void setInstance();
 		void setSurface(GLFWwindow* window);
 		void setPhysicalDevice(
@@ -114,6 +174,7 @@ namespace pje::renderer {
 		void setShaderModule(VkShaderModule& shaderModule, const std::vector<char>& shaderCode);
 		void setShaderProgram(std::string shaderName);
 		void setDescriptorSet(const std::vector<DescriptorSetElementVK>& elements);
+		void setTexSampler();
 		void setRenderpass();
 		void setRendertarget(ImageVK& rt, VkExtent3D imgSize, VkFormat format, VkImageUsageFlags usage, VkImageAspectFlags aspectMask);
 		void setSwapchain(VkExtent2D imgSize);
@@ -121,12 +182,18 @@ namespace pje::renderer {
 		void setFence(VkFence& fence, bool isSignaled);
 		void setSemaphore(VkSemaphore& sem);
 		void setCommandPool();
-		void setCommandbuffer();
+		void allocateCommandbufferOf(const VkCommandPool& cbPool, uint32_t cbCount, VkCommandBuffer* pCommandBuffers);
 		void buildPipeline();
 		bool requestLayer(RequestLevel level, std::string layerName);
 		bool requestExtension(RequestLevel level, std::string extensionName);
 		void requestGlfwInstanceExtensions();
 		std::vector<char> loadShader(const std::string& filename);
 		VkDeviceMemory allocateMemory(VkMemoryRequirements memReq, VkMemoryPropertyFlags flagMask);
+		VkBuffer allocateBuffer(VkDeviceSize requiredSize, VkBufferUsageFlags usage);
+		void prepareStaging(VkDeviceSize requiredSize);
+		void copyStagedBuffer(VkBuffer dst, const VkDeviceSize offsetInDst, const VkDeviceSize dataInfo);
+		void copyStagedBuffer(VkImage dst, const pje::engine::types::Texture texInfo);
+		void generateMipmaps(ImageVK& uploadedTexture, unsigned int baseTexWidth, unsigned int baseTexHeight);
+		void recordCbRenderingFor(const pje::engine::types::LSysObject& renderable, uint32_t imgIndex);
 	};
 }

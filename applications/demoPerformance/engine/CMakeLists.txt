@@ -17,8 +17,6 @@ target_sources(demoPerformance
 
 		"${CMAKE_CURRENT_SOURCE_DIR}/turtleInterpreter.h"
 		"${CMAKE_CURRENT_SOURCE_DIR}/turtleInterpreter.cpp"
-
-		"${CMAKE_CURRENT_SOURCE_DIR}/rendererInterface.h"
 )
 
 # defines external dependencies

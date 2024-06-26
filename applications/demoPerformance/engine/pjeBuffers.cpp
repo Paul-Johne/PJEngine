@@ -63,3 +63,60 @@ pje::engine::types::LSysPrimitive::~LSysPrimitive() {}
 pje::engine::types::LSysObject::LSysObject() : m_matrices() {}
 
 pje::engine::types::LSysObject::~LSysObject() {}
+
+void pje::engine::types::LSysObject::placeObjectInWorld(const glm::vec3 translation, const float rotationDegreesY, const glm::vec3 scale) {
+	const static glm::mat4 identityMat = glm::mat4(1.0f);
+
+	glm::mat4 t = glm::translate(
+		identityMat, translation
+	);
+	glm::mat4 r_y = glm::rotate(
+		identityMat, glm::radians(rotationDegreesY), glm::vec3(0.0f, 1.0f, 0.0f)
+	);
+	glm::mat4 s = glm::scale(
+		identityMat, scale
+	);
+
+	m_matrices.modelMatrix = t * r_y * s;
+}
+
+void pje::engine::types::LSysObject::placeCamera(const glm::vec3 posInWorld, const glm::vec3 focusCenter, const glm::vec3 cameraUp) {
+	m_matrices.viewMatrix = glm::lookAt(posInWorld, focusCenter, cameraUp);
+}
+
+void pje::engine::types::LSysObject::setPerspective(const float fovY, const float aspectRatio, const float nearPlane, const float farPlane, API api) {
+	m_matrices.projectionMatrix = glm::perspective(fovY, aspectRatio, nearPlane, farPlane);
+
+	if (api == API::Vulkan)
+		m_matrices.projectionMatrix[1][1] *= -1;
+}
+
+void pje::engine::types::LSysObject::updateMVP() {
+	m_matrices.mvp = m_matrices.projectionMatrix * m_matrices.viewMatrix * m_matrices.modelMatrix;
+}
+
+void pje::engine::types::LSysObject::animWindBlow(const float deltaTime, const float blowStrength) {
+	/* update m_bones to simulate an even changing wind power affecting the bones */
+	const static glm::mat4 identityMat		= glm::mat4(1.0f);
+	constexpr float PI						= 3.1415927f;
+	const static float tiltUnitInRadians	= 20.0f * (PI / 180.0f)  ;
+
+	glm::mat4 tiltMat = glm::rotate(
+		identityMat, std::sinf(tiltUnitInRadians * deltaTime) * blowStrength, glm::vec3(0.0f, 0.0f, 1.0f)
+	);
+
+	// TODO(scene graph animation) !!
+	for (auto& bone : m_bones) {
+		bone.animationpose = bone.restpose * tiltMat;
+	}
+}
+
+std::vector<glm::mat4> pje::engine::types::LSysObject::getBoneMatrices() const {
+	std::vector<glm::mat4> res;
+
+	for (const auto& bone : m_bones) {
+		res.push_back(bone.animationpose * bone.restposeInv);
+	}
+
+	return res;
+}

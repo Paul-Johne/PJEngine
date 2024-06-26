@@ -2,15 +2,18 @@
 	#pragma once
 
 /* Third Party Files */
-	#include <cstdint>			// fixed size integer
-	#include <string>			// std::string
-	#include <array>			// std::array
-	#include <vector>			// std::vector
-	#include <memory>			// std::<smartPointer>
+	#include <cstdint>							// fixed size integer
+	#include <string>							// std::string
+	#include <array>							// std::array
+	#include <vector>							// std::vector
+	#include <memory>							// std::<smartPointer>
+	#include <chrono>							// (animation) time measurement
+	#include <cmath>							// (animation) math functions
 
-	#include <vulkan/vulkan.h>	// Vulkan
-	#include <glm/glm.hpp>		// glm types
-	#include <stb_image.h>		// stb
+	#include <vulkan/vulkan.h>					// Vulkan
+	#include <glm/glm.hpp>						// glm types
+	#include <glm/gtc/matrix_transform.hpp>		// glm matrix operations
+	#include <stb_image.h>						// stb
 
 /* PJE Types - holding data for both Vulkan and OpenGL */
 namespace pje::engine::types {
@@ -55,8 +58,8 @@ namespace pje::engine::types {
 
 	/* BoneRef - shader ressource to reference a BoneMatrix inside of shader */
 	struct BoneRef {
-		size_t	boneId;
-		float	weight;
+		uint32_t	boneId;
+		float		weight;
 	};
 
 	/* Bone - shared data container for multiple Primitive(s) */
@@ -68,7 +71,7 @@ namespace pje::engine::types {
 		*/
 		glm::mat4 restpose;			// O_i		= O_(i-1)  * T_y_i    * R_i
 		glm::mat4 restposeInv;		// O_i^-1	= R_i^-1   * T_y_i^-1 * O_(i-1)^-1
-		glm::mat4 animationpose;	// O'_i		= O'_(i-1) * <transformation matrix>
+		glm::mat4 animationpose;	// O'_i		= O_i      * <transformation matrix>
 	};
 
 	/* Mesh - 1 Primitive <-> n Mesh(es) */
@@ -108,8 +111,10 @@ namespace pje::engine::types {
 	/* LSysObject - created by TurtleInterpreter | represents logical renderable */
 	class LSysObject {
 	public:
+		enum class API { Vulkan, OpenGL };				// Y Axis -> +infinite ==> Vulkan down & OpenGL up
+
 		std::vector<LSysPrimitive>	m_objectPrimitives; // primitives placed in object space
-		MVPMatrices					m_matrices;			// object space -> world/camera/screen space	(set by OpenGL/Vulkan part)
+		MVPMatrices					m_matrices;			// object space -> world/camera/screen space
 
 		Texture						m_choosenTexture;	// PROJECT LIMITATION: same texture map for all primitives
 		std::vector<Bone>			m_bones;			// PROJECT LIMITATION: 1 boneMatrix <-> 1+ LSysPrimitive   !!!
@@ -117,5 +122,15 @@ namespace pje::engine::types {
 
 		LSysObject();
 		~LSysObject();
+
+		/* scene logic */
+		void placeObjectInWorld(const glm::vec3 translation, const float rotationDegreesY, const glm::vec3 scale);
+		void placeCamera(const glm::vec3 posInWorld, const glm::vec3 focusCenter, const glm::vec3 cameraUp);
+		void setPerspective(const float fovY, const float aspectRatio, const float nearPlane, const float farPlane, API api);
+		void updateMVP();
+
+		/* animation logic => m_bones manipulation */
+		void animWindBlow(const float deltaTime, const float blowStrength = 1.0f);
+		std::vector<glm::mat4> getBoneMatrices() const;
 	};
 }

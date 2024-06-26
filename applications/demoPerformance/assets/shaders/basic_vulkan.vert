@@ -34,7 +34,7 @@ layout(set = 0, binding = 1, std430) readonly buffer BoneRefs {
 	BoneReference reference[];	// references into boneMatrices
 } boneRefs;
 
-layout(set = 0, binding = 2, std430) readonly buffer BoneMatrices {
+layout(set = 0, binding = 2, std140) readonly buffer BoneMatrices {
 	mat4 matrix[];				// O_i' x O_i^-1 : modelspace => bonespace => modelspace
 } boneMatrices;
 

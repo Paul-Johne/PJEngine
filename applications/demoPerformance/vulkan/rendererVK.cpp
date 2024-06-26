@@ -1,9 +1,9 @@
 #include "rendererVK.h"
-#define DEBUG
+//#define DEBUG
 
-pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLFWwindow* const window, pje::engine::types::LSysObject renderable) : 
-	RendererInterface(), m_context(), m_renderWidth(parser.m_width), m_renderHeight(parser.m_height), 
-	m_vsync(parser.m_vsync), m_anisotropyLevel(AnisotropyLevel::TWOx), m_msaaFactor(VkSampleCountFlagBits::VK_SAMPLE_COUNT_4_BIT) {
+pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLFWwindow* const window, const pje::engine::types::LSysObject& renderable) : 
+	m_context(), m_renderWidth(parser.m_width), m_renderHeight(parser.m_height), m_windowIconified(false), m_vsync(parser.m_vsync), 
+	m_anisotropyLevel(AnisotropyLevel::TWOx), m_msaaFactor(VkSampleCountFlagBits::VK_SAMPLE_COUNT_4_BIT), m_instanceCount(parser.m_amountOfObjects) {
 
 	std::cout << "[VK] \tVulkan Version: " << getApiVersion() << std::endl;
 
@@ -30,7 +30,7 @@ pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLF
 	setDeviceAndQueue(VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT | VkQueueFlagBits::VK_QUEUE_TRANSFER_BIT);
 	setShaderProgram("basic_vulkan");
 
-	/* 2) Declaration of shader code structure */
+	/* 2) Declaration of shader code structure => modeled after "basic_vulkan" */
 	setDescriptorSet(
 		std::vector<DescriptorSetElementVK>{
 			{VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT}, 
@@ -39,6 +39,7 @@ pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLF
 			{VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT}
 		}
 	);
+	setTexSampler();
 	setRenderpass();
 	buildPipeline();
 
@@ -70,13 +71,28 @@ pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLF
 
 	/* 6) Commandbuffers: sends commands to GPU */
 	setCommandPool();
-	//setCommandbuffer();
+	m_context.cbsRendering = std::vector<VkCommandBuffer>(m_context.renderPassFramebuffers.size());
+	allocateCommandbufferOf(m_context.commandPool, static_cast<uint32_t>(m_context.renderPassFramebuffers.size()), m_context.cbsRendering.data());
+	allocateCommandbufferOf(m_context.commandPool, 1, &m_context.cbStaging);
+	allocateCommandbufferOf(m_context.commandPool, 1, &m_context.cbMipmapping);
+
+	/* NEXT MANUAL STEPS: Uploading, Binding, Rendering */
 }
 
 pje::renderer::RendererVK::~RendererVK() {
 	/* Better solution: using vma */
 	vkDeviceWaitIdle(m_context.device);
 	std::cout << "[VK] \tCleaning up handles ..." << std::endl;
+
+	m_buffUniformMVP.~BufferVK();
+	m_buffStorageBones.~BufferVK();
+	m_buffStorageBoneRefs.~BufferVK();
+	
+	m_texAlbedo.~ImageVK();
+	m_context.buffIndices.~BufferVK();
+	m_context.buffVertices.~BufferVK();
+
+	m_context.buffStaging.~BufferVK();
 
 	if (m_context.commandPool != VK_NULL_HANDLE)
 		vkDestroyCommandPool(m_context.device, m_context.commandPool, nullptr);			// + freeing <Commandbuffer>
@@ -101,18 +117,8 @@ pje::renderer::RendererVK::~RendererVK() {
 	if (m_context.swapchain != VK_NULL_HANDLE)
 		vkDestroySwapchainKHR(m_context.device, m_context.swapchain, nullptr);
 
-	if (m_context.rtDepth.imageView != VK_NULL_HANDLE)
-		vkDestroyImageView(m_context.device, m_context.rtDepth.imageView, nullptr);
-	if (m_context.rtDepth.memory != VK_NULL_HANDLE)
-		vkFreeMemory(m_context.device, m_context.rtDepth.memory, nullptr);
-	if (m_context.rtDepth.image != VK_NULL_HANDLE)
-		vkDestroyImage(m_context.device, m_context.rtDepth.image, nullptr);
-	if (m_context.rtMsaa.imageView != VK_NULL_HANDLE)
-		vkDestroyImageView(m_context.device, m_context.rtMsaa.imageView, nullptr);
-	if (m_context.rtMsaa.memory != VK_NULL_HANDLE)
-		vkFreeMemory(m_context.device, m_context.rtMsaa.memory, nullptr);
-	if (m_context.rtMsaa.image != VK_NULL_HANDLE)
-		vkDestroyImage(m_context.device, m_context.rtMsaa.image, nullptr);
+	m_context.rtDepth.~ImageVK();
+	m_context.rtMsaa.~ImageVK();
 
 	if (m_context.pipeline != VK_NULL_HANDLE)
 		vkDestroyPipeline(m_context.device, m_context.pipeline, nullptr);
@@ -121,6 +127,8 @@ pje::renderer::RendererVK::~RendererVK() {
 	if (m_context.renderPass != VK_NULL_HANDLE)
 		vkDestroyRenderPass(m_context.device, m_context.renderPass, nullptr);
 
+	if (m_context.texSampler != VK_NULL_HANDLE)
+		vkDestroySampler(m_context.device, m_context.texSampler, nullptr);
 	if (m_context.descriptorPool != VK_NULL_HANDLE)
 		vkDestroyDescriptorPool(m_context.device, m_context.descriptorPool, nullptr);	// + freeing <DescriptorSet>
 	if (m_context.descriptorSetLayout != VK_NULL_HANDLE)
@@ -141,6 +149,331 @@ pje::renderer::RendererVK::~RendererVK() {
 	std::cout << "[VK] \tCleanup of handles --- DONE\n" << std::endl;
 }
 
+void pje::renderer::RendererVK::uploadRenderable(const pje::engine::types::LSysObject& renderable) {
+	if (m_context.buffVertices.buffer != VK_NULL_HANDLE) {
+		vkFreeMemory(m_context.device, m_context.buffVertices.memory, nullptr);
+		vkDestroyBuffer(m_context.device, m_context.buffVertices.buffer, nullptr);
+	}
+	if (m_context.buffIndices.buffer != VK_NULL_HANDLE) {
+		vkFreeMemory(m_context.device, m_context.buffIndices.memory, nullptr);
+		vkDestroyBuffer(m_context.device, m_context.buffIndices.buffer, nullptr);
+	}
+
+	/* 1) Vertices */
+	m_context.buffVertices.hostDevice	= m_context.device;
+	m_context.buffVertices.size			= static_cast<VkDeviceSize>(
+		(
+			renderable.m_objectPrimitives.back().m_meshes.back().m_vertices.size() +
+			renderable.m_objectPrimitives.back().m_meshes.back().m_offsetPriorMeshesVertices +
+			renderable.m_objectPrimitives.back().m_offsetPriorPrimitivesVertices
+		) * sizeof(pje::engine::types::Vertex)
+	);
+	m_context.buffVertices.buffer		= allocateBuffer(m_context.buffVertices.size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+	VkMemoryRequirements memReqVertices;
+	vkGetBufferMemoryRequirements(m_context.device, m_context.buffVertices.buffer, &memReqVertices);
+	m_context.buffVertices.memory		= allocateMemory(memReqVertices, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	vkBindBufferMemory(m_context.buffVertices.hostDevice, m_context.buffVertices.buffer, m_context.buffVertices.memory, 0);
+
+	/* 2) Indices */
+	m_context.buffIndices.hostDevice	= m_context.device;
+	m_context.buffIndices.size			= static_cast<VkDeviceSize>(
+		(
+			renderable.m_objectPrimitives.back().m_meshes.back().m_indices.size() +
+			renderable.m_objectPrimitives.back().m_meshes.back().m_offsetPriorMeshesIndices +
+			renderable.m_objectPrimitives.back().m_offsetPriorPrimitivesIndices
+		) * sizeof(uint32_t)
+	);
+	m_context.buffIndices.buffer		= allocateBuffer(m_context.buffIndices.size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+	VkMemoryRequirements memReqIndices;
+	vkGetBufferMemoryRequirements(m_context.device, m_context.buffIndices.buffer, &memReqIndices);
+	m_context.buffIndices.memory		= allocateMemory(memReqIndices, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	vkBindBufferMemory(m_context.buffIndices.hostDevice, m_context.buffIndices.buffer, m_context.buffIndices.memory, 0);
+
+	/* 3) Uploading */
+	VkDeviceSize vByteOffset = 0;
+	VkDeviceSize vByteSize;
+	VkDeviceSize iByteOffset = 0;
+	VkDeviceSize iByteSize;
+	void* dstPtr;
+
+	for (const auto& primitive : renderable.m_objectPrimitives) {
+		for (const auto& mesh : primitive.m_meshes) {
+			vByteSize = sizeof(pje::engine::types::Vertex) * mesh.m_vertices.size();
+			iByteSize = sizeof(uint32_t) * mesh.m_indices.size();
+
+			/* Upload via staging each mesh individually */
+			prepareStaging(vByteSize);
+			vkMapMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.memory, 0, VK_WHOLE_SIZE, 0, &dstPtr);
+			memcpy(dstPtr, mesh.m_vertices.data(), vByteSize);
+			vkUnmapMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.memory);
+			copyStagedBuffer(m_context.buffVertices.buffer, vByteOffset, vByteSize);
+
+			prepareStaging(iByteSize);
+			vkMapMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.memory, 0, VK_WHOLE_SIZE, 0, &dstPtr);
+			memcpy(dstPtr, mesh.m_indices.data(), iByteSize);
+			vkUnmapMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.memory);
+			copyStagedBuffer(m_context.buffIndices.buffer, iByteOffset, iByteSize);
+
+			vByteOffset += vByteSize;
+			iByteOffset += iByteSize;
+		}
+	}
+	std::cout << "[VK] \tUploading renderable --- DONE" << std::endl;
+}
+
+void pje::renderer::RendererVK::uploadTextureOf(const pje::engine::types::LSysObject& renderable, bool genMipmaps, TextureType type) {
+	switch (type) {
+	case TextureType::Albedo:
+		if (m_texAlbedo.image != VK_NULL_HANDLE || m_texAlbedo.memory != VK_NULL_HANDLE || m_texAlbedo.imageView != VK_NULL_HANDLE) {
+			vkDestroyImageView(m_texAlbedo.hostDevice, m_texAlbedo.imageView, nullptr);
+			vkFreeMemory(m_texAlbedo.hostDevice, m_texAlbedo.memory, nullptr);
+			vkDestroyImage(m_texAlbedo.hostDevice, m_texAlbedo.image, nullptr);
+		}
+
+		unsigned int baseTexWidth	= static_cast<unsigned int>(renderable.m_choosenTexture.width);
+		unsigned int baseTexHeight	= static_cast<unsigned int>(renderable.m_choosenTexture.height);
+
+		m_texAlbedo.hostDevice	= m_context.device;
+		m_texAlbedo.format		= m_context.surfaceFormat.format;
+		m_texAlbedo.mipCount	= genMipmaps ? std::max<unsigned int>(std::log2(baseTexWidth) + 1, std::log2(baseTexHeight) + 1) : 1;
+
+		/* 1/3) Image */
+		VkImageCreateInfo imgInfo;
+		imgInfo.sType					= VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imgInfo.pNext					= nullptr;
+		imgInfo.flags					= 0;
+		imgInfo.imageType				= VkImageType::VK_IMAGE_TYPE_2D;
+		imgInfo.format					= m_texAlbedo.format;
+		imgInfo.extent					= VkExtent3D{ baseTexWidth, baseTexHeight, 1 };
+		imgInfo.mipLevels				= m_texAlbedo.mipCount;
+		imgInfo.arrayLayers				= 1;
+		imgInfo.samples					= VK_SAMPLE_COUNT_1_BIT;
+		imgInfo.tiling					= VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
+		imgInfo.usage					= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		imgInfo.sharingMode				= VkSharingMode::VK_SHARING_MODE_EXCLUSIVE;
+		imgInfo.queueFamilyIndexCount	= 0;
+		imgInfo.pQueueFamilyIndices		= nullptr;
+		imgInfo.initialLayout			= VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
+		vkCreateImage(m_texAlbedo.hostDevice, &imgInfo, nullptr, &m_texAlbedo.image);
+
+		/* 2/3) Memory */
+		VkMemoryRequirements memReq;
+		vkGetImageMemoryRequirements(m_texAlbedo.hostDevice, m_texAlbedo.image, &memReq);
+
+		m_texAlbedo.memory = allocateMemory(memReq, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		vkBindImageMemory(m_texAlbedo.hostDevice, m_texAlbedo.image, m_texAlbedo.memory, 0);
+
+		/* 3/3) Image View*/
+		VkImageViewCreateInfo viewInfo;
+		viewInfo.sType		= VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.pNext		= nullptr;
+		viewInfo.flags		= 0;
+		viewInfo.image		= m_texAlbedo.image;
+		viewInfo.viewType	= VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.format		= m_texAlbedo.format;
+		if (m_texAlbedo.format == VK_FORMAT_B8G8R8A8_UNORM) {
+			viewInfo.components = VkComponentMapping{
+				VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_A
+			};
+		}
+		else if (m_texAlbedo.format == VK_FORMAT_R8G8B8A8_UNORM) {
+			viewInfo.components = VkComponentMapping{
+				VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A
+			};
+		}
+		else {
+			throw std::runtime_error("Failed to provide proper VkFormat for albedo texture.");
+		}
+		viewInfo.subresourceRange = VkImageSubresourceRange{
+			VK_IMAGE_ASPECT_COLOR_BIT, 0, m_texAlbedo.mipCount, 0, 1
+		};
+		vkCreateImageView(m_texAlbedo.hostDevice, &viewInfo, nullptr, &m_texAlbedo.imageView);
+
+		/* Uploading */
+		void* dstPtr;
+		prepareStaging(renderable.m_choosenTexture.size);
+		vkMapMemory(m_texAlbedo.hostDevice, m_context.buffStaging.memory, 0, VK_WHOLE_SIZE, 0, &dstPtr);
+		memcpy(dstPtr, renderable.m_choosenTexture.uncompressedTexture.data(), renderable.m_choosenTexture.size);
+		vkUnmapMemory(m_texAlbedo.hostDevice, m_context.buffStaging.memory);
+		copyStagedBuffer(m_texAlbedo.image, renderable.m_choosenTexture);
+
+		/* Mipmapping */
+		if (genMipmaps)
+			generateMipmaps(m_texAlbedo, baseTexWidth, baseTexHeight);
+
+		break;
+	}
+	std::cout << "[VK] \tUploading texture of a renderable --- DONE" << std::endl;
+}
+
+void pje::renderer::RendererVK::uploadBuffer(const pje::engine::types::LSysObject& renderable, BufferVK& m_VarRaw, BufferType type) {
+	void* dstPtr;
+	VkMemoryRequirements memReq = {};
+
+	switch (type) {
+	case BufferType::UniformMVP:
+		m_VarRaw.hostDevice = m_context.device;
+		m_VarRaw.size		= sizeof(pje::engine::types::MVPMatrices);
+		m_VarRaw.buffer		= allocateBuffer(m_VarRaw.size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT);
+
+		vkGetBufferMemoryRequirements(m_context.device, m_VarRaw.buffer, &memReq);
+		m_VarRaw.memory		= allocateMemory(
+			memReq, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+		);
+		vkBindBufferMemory(m_VarRaw.hostDevice, m_VarRaw.buffer, m_VarRaw.memory, 0);
+
+		vkMapMemory(m_VarRaw.hostDevice, m_VarRaw.memory, 0, VK_WHOLE_SIZE, 0, &dstPtr);
+		memcpy(dstPtr, &renderable.m_matrices, m_VarRaw.size);
+		vkUnmapMemory(m_VarRaw.hostDevice, m_VarRaw.memory);
+
+		break;
+	case BufferType::StorageBoneRefs:
+		m_VarRaw.hostDevice = m_context.device;
+		m_VarRaw.size		= sizeof(pje::engine::types::BoneRef) * renderable.m_boneRefs.size();
+		m_VarRaw.buffer		= allocateBuffer(m_VarRaw.size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+
+		vkGetBufferMemoryRequirements(m_context.device, m_VarRaw.buffer, &memReq);
+		m_VarRaw.memory		= allocateMemory(memReq, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		vkBindBufferMemory(m_VarRaw.hostDevice, m_VarRaw.buffer, m_VarRaw.memory, 0);
+
+		prepareStaging(m_VarRaw.size);
+		vkMapMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.memory, 0, VK_WHOLE_SIZE, 0, &dstPtr);
+		memcpy(dstPtr, renderable.m_boneRefs.data(), m_VarRaw.size);
+		vkUnmapMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.memory);
+		copyStagedBuffer(m_VarRaw.buffer, 0, m_VarRaw.size);
+
+		break;
+	case BufferType::StorageBones:
+		m_VarRaw.hostDevice = m_context.device;
+		m_VarRaw.size		= sizeof(glm::mat4) * renderable.m_bones.size();
+		m_VarRaw.buffer		= allocateBuffer(m_VarRaw.size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
+
+		vkGetBufferMemoryRequirements(m_context.device, m_VarRaw.buffer, &memReq);
+		m_VarRaw.memory		= allocateMemory(memReq, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+		vkBindBufferMemory(m_VarRaw.hostDevice, m_VarRaw.buffer, m_VarRaw.memory, 0);
+
+		prepareStaging(m_VarRaw.size);
+		vkMapMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.memory, 0, VK_WHOLE_SIZE, 0, &dstPtr);
+		memcpy(dstPtr, renderable.getBoneMatrices().data(), m_VarRaw.size);
+		vkUnmapMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.memory);
+		copyStagedBuffer(m_VarRaw.buffer, 0, m_VarRaw.size);
+
+		break;
+	}
+}
+
+void pje::renderer::RendererVK::bindToShader(const BufferVK& buffer, uint32_t dstBinding, VkDescriptorType descType) {
+	VkDescriptorBufferInfo bufferInfo;
+	bufferInfo.buffer	= buffer.buffer;
+	bufferInfo.offset	= 0;
+	bufferInfo.range	= VK_WHOLE_SIZE;
+
+	VkWriteDescriptorSet update;
+	update.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	update.pNext			= nullptr;
+	update.dstSet			= m_context.descriptorSet;
+	update.dstBinding		= dstBinding;
+	update.dstArrayElement	= 0;
+	update.descriptorCount	= 1;
+	update.descriptorType	= descType;
+	update.pImageInfo		= nullptr;
+	update.pBufferInfo		= &bufferInfo;
+	update.pTexelBufferView = nullptr;
+	vkUpdateDescriptorSets(m_context.device, 1, &update, 0, nullptr);
+}
+
+void pje::renderer::RendererVK::bindToShader(const ImageVK& image, uint32_t dstBinding, VkDescriptorType descType) {
+	VkDescriptorImageInfo imageInfo;
+	imageInfo.sampler		= m_context.texSampler;
+	imageInfo.imageView		= image.imageView;
+	imageInfo.imageLayout	= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	VkWriteDescriptorSet update;
+	update.sType			= VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	update.pNext			= nullptr;
+	update.dstSet			= m_context.descriptorSet;
+	update.dstBinding		= dstBinding;
+	update.dstArrayElement	= 0;
+	update.descriptorCount	= 1;
+	update.descriptorType	= descType;
+	update.pImageInfo		= &imageInfo;
+	update.pBufferInfo		= nullptr;
+	update.pTexelBufferView = nullptr;
+	vkUpdateDescriptorSets(m_context.device, 1, &update, 0, nullptr);
+}
+
+void pje::renderer::RendererVK::renderIn(GLFWwindow* window, const pje::engine::types::LSysObject& renderable) {
+	m_windowIconified = glfwGetWindowAttrib(window, GLFW_ICONIFIED);
+	if (!m_windowIconified) {
+		uint32_t imgIndex;
+		vkAcquireNextImageKHR(
+			m_context.device, m_context.swapchain, 0, m_context.semSwapImgReceived, VK_NULL_HANDLE, &imgIndex
+		);
+
+		vkWaitForFences(m_context.device, 1, &m_context.fenceImgRendered, VK_TRUE, std::numeric_limits<uint32_t>::max());
+		vkResetFences(m_context.device, 1, &m_context.fenceImgRendered);
+		vkResetCommandBuffer(m_context.cbsRendering[imgIndex], 0);
+
+		recordCbRenderingFor(renderable, imgIndex);
+
+		VkPipelineStageFlags waitStageMask[]{ VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+		VkSubmitInfo submitInfo;
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.pNext = nullptr;
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = &m_context.semSwapImgReceived;
+		submitInfo.pWaitDstStageMask = waitStageMask;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &m_context.cbsRendering[imgIndex];
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &m_context.semImgRendered;
+		vkQueueSubmit(m_context.deviceQueue, 1, &submitInfo, m_context.fenceImgRendered);
+
+		VkPresentInfoKHR presentInfo;
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		presentInfo.pNext = nullptr;
+		presentInfo.waitSemaphoreCount = 1;
+		presentInfo.pWaitSemaphores = &m_context.semImgRendered;
+		presentInfo.swapchainCount = 1;
+		presentInfo.pSwapchains = &m_context.swapchain;
+		presentInfo.pImageIndices = &imgIndex;
+		presentInfo.pResults = nullptr;
+		vkQueuePresentKHR(m_context.deviceQueue, &presentInfo);
+	}
+	else {
+		glfwWaitEvents();
+	}
+}
+
+void pje::renderer::RendererVK::updateBuffer(const pje::engine::types::LSysObject& renderable, BufferVK& m_Var, BufferType type) {
+	void* dstPtr;
+
+	switch (type) {
+	case BufferType::UniformMVP:
+		vkMapMemory(m_Var.hostDevice, m_Var.memory, 0, VK_WHOLE_SIZE, 0, &dstPtr);
+		memcpy(dstPtr, &renderable.m_matrices, m_Var.size);
+		vkUnmapMemory(m_Var.hostDevice, m_Var.memory);
+
+		break;
+	case BufferType::StorageBoneRefs:
+		prepareStaging(m_Var.size);
+		vkMapMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.memory, 0, VK_WHOLE_SIZE, 0, &dstPtr);
+		memcpy(dstPtr, renderable.m_boneRefs.data(), m_Var.size);
+		vkUnmapMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.memory);
+		copyStagedBuffer(m_Var.buffer, 0, m_Var.size);
+
+		break;
+	case BufferType::StorageBones:
+		prepareStaging(m_Var.size);
+		vkMapMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.memory, 0, VK_WHOLE_SIZE, 0, &dstPtr);
+		memcpy(dstPtr, renderable.getBoneMatrices().data(), m_Var.size);
+		vkUnmapMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.memory);
+		copyStagedBuffer(m_Var.buffer, 0, m_Var.size);
+
+		break;
+	}
+}
+
 std::string pje::renderer::RendererVK::getApiVersion() {
 	uint32_t apiVersion;
 	vkEnumerateInstanceVersion(&apiVersion);
@@ -156,7 +489,7 @@ void pje::renderer::RendererVK::setInstance() {
 		VkApplicationInfo appInfo = {};
 		appInfo.sType				= VK_STRUCTURE_TYPE_APPLICATION_INFO;
 		appInfo.pNext				= nullptr;
-		appInfo.pApplicationName	= "bachelor";
+		appInfo.pApplicationName	= "Bachelor";
 		appInfo.applicationVersion	= VK_MAKE_VERSION(0, 0, 0);
 		appInfo.pEngineName			= "PJE";
 		appInfo.engineVersion		= VK_MAKE_VERSION(0, 0, 0);
@@ -499,7 +832,7 @@ void pje::renderer::RendererVK::setDescriptorSet(const std::vector<DescriptorSet
 	layoutCreateInfo.sType			= VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	layoutCreateInfo.pNext			= nullptr;
 	layoutCreateInfo.flags			= 0;
-	layoutCreateInfo.bindingCount	= layoutBindings.size();
+	layoutCreateInfo.bindingCount	= static_cast<uint32_t>(layoutBindings.size());
 	layoutCreateInfo.pBindings		= layoutBindings.data();
 	vkCreateDescriptorSetLayout(m_context.device, &layoutCreateInfo, nullptr, &m_context.descriptorSetLayout);
 
@@ -510,6 +843,7 @@ void pje::renderer::RendererVK::setDescriptorSet(const std::vector<DescriptorSet
 	/* 2) Descriptor Pool */
 	std::vector<VkDescriptorPoolSize> poolElements;
 
+	/* Finding out how many uniform buffers etc. there are */
 	for (const auto& element : elements) {
 		uint32_t amountOfThisType = 0;
 		for (const auto& cmpElement : elements) {
@@ -524,7 +858,7 @@ void pje::renderer::RendererVK::setDescriptorSet(const std::vector<DescriptorSet
 	poolCreateInfo.pNext			= nullptr;
 	poolCreateInfo.flags			= VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 	poolCreateInfo.maxSets			= 1;
-	poolCreateInfo.poolSizeCount	= poolElements.size();
+	poolCreateInfo.poolSizeCount	= static_cast<uint32_t>(poolElements.size());
 	poolCreateInfo.pPoolSizes		= poolElements.data();
 	vkCreateDescriptorPool(m_context.device, &poolCreateInfo, nullptr, &m_context.descriptorPool);
 
@@ -544,6 +878,51 @@ void pje::renderer::RendererVK::setDescriptorSet(const std::vector<DescriptorSet
 	if (m_context.descriptorSet == VK_NULL_HANDLE)
 		throw std::runtime_error("Failed to create descriptor set.");
 	std::cout << "[VK] \tDescriptor set was set." << std::endl;
+}
+
+void pje::renderer::RendererVK::setTexSampler() {
+	VkSamplerCreateInfo samplerInfo;
+	samplerInfo.sType					= VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	samplerInfo.pNext					= nullptr;
+	samplerInfo.flags					= 0;
+	samplerInfo.magFilter				= VK_FILTER_NEAREST;
+	samplerInfo.minFilter				= VK_FILTER_NEAREST;
+	samplerInfo.mipmapMode				= VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	samplerInfo.addressModeU			= VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+	samplerInfo.addressModeV			= VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+	samplerInfo.addressModeW			= VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+	samplerInfo.borderColor				= VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+	samplerInfo.unnormalizedCoordinates = VK_FALSE;
+	samplerInfo.mipLodBias				= 0.0f;
+	samplerInfo.minLod					= 0.0f;
+	samplerInfo.maxLod					= VK_LOD_CLAMP_NONE;
+	samplerInfo.compareEnable			= VK_FALSE;
+	samplerInfo.compareOp				= VK_COMPARE_OP_ALWAYS;
+
+	if (m_anisotropyLevel != AnisotropyLevel::Disabled)
+		samplerInfo.anisotropyEnable = VK_TRUE;
+	else
+		samplerInfo.anisotropyEnable = VK_FALSE;
+
+	switch (m_anisotropyLevel) {
+	case AnisotropyLevel::TWOx:
+		samplerInfo.maxAnisotropy = 2.0f;
+		break;
+	case AnisotropyLevel::FOURx:
+		samplerInfo.maxAnisotropy = 4.0f;
+		break;
+	case AnisotropyLevel::EIGHTx:
+		samplerInfo.maxAnisotropy = 8.0f;
+		break;
+	case AnisotropyLevel::SIXTEENx:
+		samplerInfo.maxAnisotropy = 16.0f;
+		break;
+	}
+
+	vkCreateSampler(m_context.device, &samplerInfo, nullptr, &m_context.texSampler);
+	if (m_context.texSampler == VK_NULL_HANDLE)
+		throw std::runtime_error("Failed to create texture sampler.");
+	std::cout << "[VK] \tA texture sampler was set." << std::endl;
 }
 
 void pje::renderer::RendererVK::setRenderpass() {
@@ -648,6 +1027,7 @@ void pje::renderer::RendererVK::setRenderpass() {
 }
 
 void pje::renderer::RendererVK::setRendertarget(ImageVK& rt, VkExtent3D imgSize, VkFormat format, VkImageUsageFlags usage, VkImageAspectFlags aspectMask) {
+	rt.hostDevice = m_context.device;
 	rt.format = format;
 	
 	if (rt.image != VK_NULL_HANDLE || rt.memory != VK_NULL_HANDLE || rt.imageView != VK_NULL_HANDLE) {
@@ -657,23 +1037,23 @@ void pje::renderer::RendererVK::setRendertarget(ImageVK& rt, VkExtent3D imgSize,
 	}
 
 	/* 1) Image */
-	VkImageCreateInfo imageInfo;
-	imageInfo.sType					= VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	imageInfo.pNext					= nullptr;
-	imageInfo.flags					= 0;
-	imageInfo.imageType				= VkImageType::VK_IMAGE_TYPE_2D;
-	imageInfo.format				= rt.format;
-	imageInfo.extent				= imgSize;
-	imageInfo.mipLevels				= 1;
-	imageInfo.arrayLayers			= 1;
-	imageInfo.samples				= m_msaaFactor;
-	imageInfo.tiling				= VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
-	imageInfo.usage					= usage;
-	imageInfo.sharingMode			= VkSharingMode::VK_SHARING_MODE_EXCLUSIVE;
-	imageInfo.queueFamilyIndexCount = 0;
-	imageInfo.pQueueFamilyIndices	= nullptr;
-	imageInfo.initialLayout			= VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
-	vkCreateImage(m_context.device, &imageInfo, nullptr, &rt.image);
+	VkImageCreateInfo imgInfo;
+	imgInfo.sType					= VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imgInfo.pNext					= nullptr;
+	imgInfo.flags					= 0;
+	imgInfo.imageType				= VkImageType::VK_IMAGE_TYPE_2D;
+	imgInfo.format					= rt.format;
+	imgInfo.extent					= imgSize;
+	imgInfo.mipLevels				= 1;
+	imgInfo.arrayLayers				= 1;
+	imgInfo.samples					= m_msaaFactor;
+	imgInfo.tiling					= VkImageTiling::VK_IMAGE_TILING_OPTIMAL;
+	imgInfo.usage					= usage;
+	imgInfo.sharingMode				= VkSharingMode::VK_SHARING_MODE_EXCLUSIVE;
+	imgInfo.queueFamilyIndexCount	= 0;
+	imgInfo.pQueueFamilyIndices		= nullptr;
+	imgInfo.initialLayout			= VkImageLayout::VK_IMAGE_LAYOUT_UNDEFINED;
+	vkCreateImage(m_context.device, &imgInfo, nullptr, &rt.image);
 
 	if (rt.image == VK_NULL_HANDLE)
 		throw std::runtime_error("Failed to set rendertarget's VkImage.");
@@ -769,13 +1149,13 @@ void pje::renderer::RendererVK::setSwapchain(VkExtent2D imgSize) {
 void pje::renderer::RendererVK::setFramebuffers(uint32_t renderPassAttachmentCount) {
 	m_context.renderPassFramebuffers = std::vector<VkFramebuffer>(m_context.surfaceImageCount);
 	VkFramebufferCreateInfo fbInfo;
-	fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-	fbInfo.pNext = nullptr;
-	fbInfo.flags = 0;
-	fbInfo.renderPass = m_context.renderPass;
-	fbInfo.width = m_renderWidth;
-	fbInfo.height = m_renderHeight;
-	fbInfo.layers = 1;
+	fbInfo.sType		= VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	fbInfo.pNext		= nullptr;
+	fbInfo.flags		= 0;
+	fbInfo.renderPass	= m_context.renderPass;
+	fbInfo.width		= m_renderWidth;
+	fbInfo.height		= m_renderHeight;
+	fbInfo.layers		= 1;
 
 	fbInfo.attachmentCount = renderPassAttachmentCount;
 	for (uint32_t i = 0; i < m_context.surfaceImageCount; i++) {
@@ -797,12 +1177,12 @@ void pje::renderer::RendererVK::setFence(VkFence& fence, bool isSignaled) {
 		vkDestroyFence(m_context.device, fence, nullptr);
 
 	VkFenceCreateInfo info;
-	info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-	info.pNext = nullptr;
+	info.sType		= VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	info.pNext		= nullptr;
 	if (isSignaled)
-		info.flags = 1;
+		info.flags	= 1;
 	else
-		info.flags = 0;
+		info.flags	= 0;
 
 	vkCreateFence(m_context.device, &info, nullptr, &fence);
 	if (fence == VK_NULL_HANDLE)
@@ -827,10 +1207,10 @@ void pje::renderer::RendererVK::setSemaphore(VkSemaphore& sem) {
 
 void pje::renderer::RendererVK::setCommandPool() {
 	VkCommandPoolCreateInfo poolInfo;
-	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	poolInfo.pNext = nullptr;
-	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	poolInfo.queueFamilyIndex = m_context.deviceQueueFamilyIndex;
+	poolInfo.sType				= VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	poolInfo.pNext				= nullptr;
+	poolInfo.flags				= VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	poolInfo.queueFamilyIndex	= m_context.deviceQueueFamilyIndex;
 	vkCreateCommandPool(m_context.device, &poolInfo, nullptr, &m_context.commandPool);
 	
 	if (m_context.commandPool == VK_NULL_HANDLE)
@@ -838,9 +1218,19 @@ void pje::renderer::RendererVK::setCommandPool() {
 	std::cout << "[VK] \tCommand pool was set." << std::endl;
 }
 
-void pje::renderer::RendererVK::setCommandbuffer() {
-	// TODO
+void pje::renderer::RendererVK::allocateCommandbufferOf(const VkCommandPool& cbPool, uint32_t cbCount, VkCommandBuffer* pCommandBuffers) {
+	VkCommandBufferAllocateInfo allocateInfo;
+	allocateInfo.sType				= VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocateInfo.pNext				= nullptr;
+	allocateInfo.commandPool		= cbPool;
+	allocateInfo.level				= VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocateInfo.commandBufferCount = cbCount;
+	vkAllocateCommandBuffers(m_context.device, &allocateInfo, pCommandBuffers);
 
+	if (cbCount > 1)
+		std::cout << "[VK] \tCommandbuffers were allocated." << std::endl;
+	else
+		std::cout << "[VK] \tCommandbuffer was allocated." << std::endl;
 }
 
 void pje::renderer::RendererVK::buildPipeline() {
@@ -883,7 +1273,7 @@ void pje::renderer::RendererVK::buildPipeline() {
 	vertexInputInfo.flags							= 0;
 	vertexInputInfo.vertexBindingDescriptionCount	= 1;
 	vertexInputInfo.pVertexBindingDescriptions		= &vertexBindingDesc;
-	vertexInputInfo.vertexAttributeDescriptionCount = vertexAttribsDesc.size();
+	vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttribsDesc.size());
 	vertexInputInfo.pVertexAttributeDescriptions	= vertexAttribsDesc.data();
 
 	VkPipelineRasterizationStateCreateInfo rasterizationInfo;
@@ -959,7 +1349,7 @@ void pje::renderer::RendererVK::buildPipeline() {
 	pipelineInfo.sType					= VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	pipelineInfo.pNext					= nullptr;
 	pipelineInfo.flags					= 0;
-	pipelineInfo.stageCount				= m_context.shaderProgram.size();
+	pipelineInfo.stageCount				= static_cast<uint32_t>(m_context.shaderProgram.size());
 	pipelineInfo.pStages				= m_context.shaderProgram.data();
 	pipelineInfo.pVertexInputState		= &vertexInputInfo;
 	pipelineInfo.pInputAssemblyState	= &inputAssemblyInfo;
@@ -984,7 +1374,7 @@ void pje::renderer::RendererVK::buildPipeline() {
 
 bool pje::renderer::RendererVK::requestLayer(RequestLevel level, std::string layerName) {
 	switch (level) {
-	case pje::renderer::RendererVK::RequestLevel::Instance:
+	case RequestLevel::Instance:
 		{
 			uint32_t propertyCount = 0;
 			vkEnumerateInstanceLayerProperties(&propertyCount, nullptr);
@@ -1000,7 +1390,7 @@ bool pje::renderer::RendererVK::requestLayer(RequestLevel level, std::string lay
 			}
 		}
 		return false;
-	case pje::renderer::RendererVK::RequestLevel::Device:
+	case RequestLevel::Device:
 		std::cout << "[VK] \tPJE doesn't support deprecated device layers." << std::endl;
 		return false;
 	default:
@@ -1010,7 +1400,7 @@ bool pje::renderer::RendererVK::requestLayer(RequestLevel level, std::string lay
 
 bool pje::renderer::RendererVK::requestExtension(RequestLevel level, std::string extensionName) {
 	switch (level) {
-	case pje::renderer::RendererVK::RequestLevel::Instance:
+	case RequestLevel::Instance:
 		{
 			uint32_t propertyCount = 0;
 			vkEnumerateInstanceExtensionProperties(nullptr, &propertyCount, nullptr);
@@ -1026,7 +1416,7 @@ bool pje::renderer::RendererVK::requestExtension(RequestLevel level, std::string
 			}
 		}
 		return false;
-	case pje::renderer::RendererVK::RequestLevel::Device:
+	case RequestLevel::Device:
 		{
 			if (m_context.gpu == VK_NULL_HANDLE)
 				return false;
@@ -1121,4 +1511,416 @@ VkDeviceMemory pje::renderer::RendererVK::allocateMemory(VkMemoryRequirements me
 	vkAllocateMemory(m_context.device, &allocInfo, nullptr, &memory);
 
 	return memory;
+}
+
+VkBuffer pje::renderer::RendererVK::allocateBuffer(VkDeviceSize requiredSize, VkBufferUsageFlags usage) {
+	VkBuffer buffer = VK_NULL_HANDLE;
+
+	VkBufferCreateInfo info;
+	info.sType					= VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	info.pNext					= nullptr;
+	info.flags					= 0;
+	info.size					= requiredSize;
+	info.usage					= usage;
+	info.sharingMode			= VK_SHARING_MODE_EXCLUSIVE;
+	info.queueFamilyIndexCount	= 0;
+	info.pQueueFamilyIndices	= nullptr;
+	vkCreateBuffer(m_context.device, &info, nullptr, &buffer);
+
+	return buffer;
+}
+
+void pje::renderer::RendererVK::prepareStaging(VkDeviceSize requiredSize) {
+	if (m_context.buffStaging.buffer == VK_NULL_HANDLE || m_context.buffStaging.size < requiredSize) {
+		if (m_context.buffStaging.buffer != VK_NULL_HANDLE) {
+			vkFreeMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.memory, nullptr);
+			vkDestroyBuffer(m_context.buffStaging.hostDevice, m_context.buffStaging.buffer, nullptr);
+		}
+
+		m_context.buffStaging.hostDevice	= m_context.device;
+		m_context.buffStaging.size			= requiredSize;
+		m_context.buffStaging.buffer		= allocateBuffer(m_context.buffStaging.size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+
+		VkMemoryRequirements memReq;
+		vkGetBufferMemoryRequirements(m_context.device, m_context.buffStaging.buffer, &memReq);
+		m_context.buffStaging.memory		= allocateMemory(memReq, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+		vkBindBufferMemory(m_context.buffStaging.hostDevice, m_context.buffStaging.buffer, m_context.buffStaging.memory, 0);
+	}
+}
+
+void pje::renderer::RendererVK::copyStagedBuffer(VkBuffer dst, const VkDeviceSize offsetInDst, const VkDeviceSize dataInfo) {
+	if (m_context.cbStaging == VK_NULL_HANDLE) {
+		VkCommandBufferAllocateInfo cbAllocateInfo;
+		cbAllocateInfo.sType				= VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		cbAllocateInfo.pNext				= nullptr;
+		cbAllocateInfo.commandPool			= m_context.commandPool;
+		cbAllocateInfo.level				= VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		cbAllocateInfo.commandBufferCount	= 1;
+		vkAllocateCommandBuffers(m_context.device, &cbAllocateInfo, &m_context.cbStaging);
+	}
+	else {
+		vkResetCommandBuffer(m_context.cbStaging, 0);
+	}
+
+	VkCommandBufferBeginInfo cbBeginInfo;
+	cbBeginInfo.sType				= VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cbBeginInfo.pNext				= nullptr;
+	cbBeginInfo.flags				= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	cbBeginInfo.pInheritanceInfo	= nullptr;
+	vkBeginCommandBuffer(m_context.cbStaging, &cbBeginInfo);
+
+	/* Copying */
+	VkBufferCopy copyRegion;
+	copyRegion.srcOffset	= 0;
+	copyRegion.dstOffset	= offsetInDst;
+	copyRegion.size			= dataInfo;
+	vkCmdCopyBuffer(m_context.cbStaging, m_context.buffStaging.buffer, dst, 1, &copyRegion);
+
+	vkEndCommandBuffer(m_context.cbStaging);
+
+	VkSubmitInfo submitInfo;
+	submitInfo.sType				= VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext				= nullptr;
+	submitInfo.waitSemaphoreCount	= 0;
+	submitInfo.pWaitSemaphores		= nullptr;
+	submitInfo.pWaitDstStageMask	= nullptr;
+	submitInfo.commandBufferCount	= 1;
+	submitInfo.pCommandBuffers		= &m_context.cbStaging;
+	submitInfo.signalSemaphoreCount = 0;
+	submitInfo.pSignalSemaphores	= nullptr;
+	vkQueueSubmit(m_context.deviceQueue, 1, &submitInfo, m_context.fenceSetupTask);
+
+	vkWaitForFences(m_context.device, 1, &m_context.fenceSetupTask, VK_TRUE, std::numeric_limits<uint32_t>::max());
+	vkResetFences(m_context.device, 1, &m_context.fenceSetupTask);
+}
+
+void pje::renderer::RendererVK::copyStagedBuffer(VkImage dst, const pje::engine::types::Texture texInfo) {
+	if (m_context.cbStaging == VK_NULL_HANDLE) {
+		VkCommandBufferAllocateInfo cbAllocateInfo;
+		cbAllocateInfo.sType				= VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		cbAllocateInfo.pNext				= nullptr;
+		cbAllocateInfo.commandPool			= m_context.commandPool;
+		cbAllocateInfo.level				= VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		cbAllocateInfo.commandBufferCount	= 1;
+		vkAllocateCommandBuffers(m_context.device, &cbAllocateInfo, &m_context.cbStaging);
+	}
+	else {
+		vkResetCommandBuffer(m_context.cbStaging, 0);
+	}
+
+	VkCommandBufferBeginInfo cbBeginInfo;
+	cbBeginInfo.sType				= VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cbBeginInfo.pNext				= nullptr;
+	cbBeginInfo.flags				= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	cbBeginInfo.pInheritanceInfo	= nullptr;
+	vkBeginCommandBuffer(m_context.cbStaging, &cbBeginInfo);
+
+	VkImageSubresourceRange imgRange{
+		VK_IMAGE_ASPECT_COLOR_BIT, 0, VK_REMAINING_MIP_LEVELS, 0, 1
+	};
+
+	VkImageMemoryBarrier memBarrier;
+	memBarrier.sType				= VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	memBarrier.pNext				= nullptr;
+	memBarrier.srcAccessMask		= VK_ACCESS_NONE;
+	memBarrier.dstAccessMask		= VK_ACCESS_NONE;
+	memBarrier.oldLayout			= VK_IMAGE_LAYOUT_UNDEFINED;
+	memBarrier.newLayout			= VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	memBarrier.srcQueueFamilyIndex	= VK_QUEUE_FAMILY_IGNORED;
+	memBarrier.dstQueueFamilyIndex	= VK_QUEUE_FAMILY_IGNORED;
+	memBarrier.image				= dst;
+	memBarrier.subresourceRange		= imgRange;
+
+	/* Layout transition 1/2 */
+	vkCmdPipelineBarrier(
+		m_context.cbStaging,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &memBarrier
+	);
+
+	VkImageSubresourceLayers imgLayers{
+		VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1
+	};
+
+	VkBufferImageCopy copyRegion;
+	copyRegion.bufferOffset			= 0;
+	copyRegion.bufferRowLength		= 0;
+	copyRegion.bufferImageHeight	= 0;
+	copyRegion.imageSubresource		= imgLayers;
+	copyRegion.imageOffset			= VkOffset3D{ 0, 0, 0 };
+	copyRegion.imageExtent			= VkExtent3D{
+		static_cast<unsigned int>(texInfo.width), static_cast<unsigned int>(texInfo.height), 1
+	};
+	/* Copying */
+	vkCmdCopyBufferToImage(
+		m_context.cbStaging, m_context.buffStaging.buffer, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion
+	);
+
+	memBarrier.oldLayout		= VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	memBarrier.newLayout		= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	memBarrier.srcAccessMask	= VK_ACCESS_TRANSFER_WRITE_BIT;
+	memBarrier.dstAccessMask	= VK_ACCESS_NONE;
+	vkCmdPipelineBarrier(
+		m_context.cbStaging,
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &memBarrier
+	);
+
+	vkEndCommandBuffer(m_context.cbStaging);
+
+	VkSubmitInfo submitInfo;
+	submitInfo.sType				= VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext				= nullptr;
+	submitInfo.commandBufferCount	= 1;
+	submitInfo.pCommandBuffers		= &m_context.cbStaging;
+	submitInfo.waitSemaphoreCount	= 0;
+	submitInfo.pWaitSemaphores		= nullptr;
+	submitInfo.pWaitDstStageMask	= nullptr;
+	submitInfo.signalSemaphoreCount = 0;
+	submitInfo.pSignalSemaphores	= nullptr;
+	vkQueueSubmit(m_context.deviceQueue, 1, &submitInfo, m_context.fenceSetupTask);
+
+	vkWaitForFences(m_context.device, 1, &m_context.fenceSetupTask, VK_TRUE, std::numeric_limits<uint32_t>::max());
+	vkResetFences(m_context.device, 1, &m_context.fenceSetupTask);
+}
+
+void pje::renderer::RendererVK::generateMipmaps(ImageVK& uploadedTexture, unsigned int baseTexWidth, unsigned int baseTexHeight) {
+	/* VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL expected for uploadedTexture because of copyStagedBuffer() */
+
+	VkOffset3D sourceResolution{ baseTexWidth, baseTexHeight, 1 };
+	VkOffset3D targetResolution{};
+
+	if (m_context.cbMipmapping == VK_NULL_HANDLE) {
+		VkCommandBufferAllocateInfo cbAllocateInfo;
+		cbAllocateInfo.sType				= VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		cbAllocateInfo.pNext				= nullptr;
+		cbAllocateInfo.commandPool			= m_context.commandPool;
+		cbAllocateInfo.level				= VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		cbAllocateInfo.commandBufferCount	= 1;
+		vkAllocateCommandBuffers(m_context.device, &cbAllocateInfo, &m_context.cbMipmapping);
+	}
+	else {
+		vkResetCommandBuffer(m_context.cbMipmapping, 0);
+	}
+
+	VkCommandBufferBeginInfo commandInfo = {};
+	commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	commandInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	/* RECORDING - START */
+	vkBeginCommandBuffer(m_context.cbMipmapping, &commandInfo);
+
+	/* Assumption : all mipmap levels are in SHADER_READ_OPTIMAL layout before entering loop */
+	for (unsigned int level = 0; level < uploadedTexture.mipCount - 1; level++) {
+		unsigned int readLevel	{ level };
+		unsigned int writeLevel	{ level + 1 };
+
+		VkImageSubresourceRange imageRangeSrc{
+			VK_IMAGE_ASPECT_COLOR_BIT,		// aspectMask
+			readLevel,						// baseMipLevel
+			1,								// levelCount
+			0,								// baseArrayLayer
+			1								// layerCount
+		};
+
+		VkImageSubresourceRange imageRangeDst{
+			VK_IMAGE_ASPECT_COLOR_BIT,		// aspectMask
+			writeLevel,						// baseMipLevel
+			1,								// levelCount
+			0,								// baseArrayLayer
+			1								// layerCount
+		};
+
+		/* 2 Memory Barriers (Layout Transition) : imageRangeSource to TRANSFER_SRC | imageRangeDst to TRANSFER_DST */
+		std::array<VkImageMemoryBarrier, 2> memBarrier;
+
+		memBarrier[0].sType					= VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		memBarrier[0].pNext					= nullptr;
+		memBarrier[0].oldLayout				= level == 0 ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		memBarrier[0].newLayout				= VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		memBarrier[0].srcQueueFamilyIndex	= VK_QUEUE_FAMILY_IGNORED;
+		memBarrier[0].dstQueueFamilyIndex	= VK_QUEUE_FAMILY_IGNORED;
+		memBarrier[0].image					= uploadedTexture.image;
+		memBarrier[0].subresourceRange		= imageRangeSrc;
+		memBarrier[0].srcAccessMask			= VK_ACCESS_TRANSFER_WRITE_BIT;			// when cache will be written	=> flush to vram
+		memBarrier[0].dstAccessMask			= VK_ACCESS_TRANSFER_READ_BIT;			// when cache will be read		=> invalidate
+
+		memBarrier[1].sType					= VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		memBarrier[1].pNext					= nullptr;
+		memBarrier[1].oldLayout				= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		memBarrier[1].newLayout				= VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		memBarrier[1].srcQueueFamilyIndex	= VK_QUEUE_FAMILY_IGNORED;
+		memBarrier[1].dstQueueFamilyIndex	= VK_QUEUE_FAMILY_IGNORED;
+		memBarrier[1].image					= uploadedTexture.image;
+		memBarrier[1].subresourceRange		= imageRangeDst;
+		memBarrier[1].srcAccessMask			= VK_ACCESS_NONE;
+		memBarrier[1].dstAccessMask			= VK_ACCESS_NONE;
+
+		vkCmdPipelineBarrier(
+			m_context.cbMipmapping,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,		// next transfer stage (next iteration)
+			0,									// 0 || VK_DEPENDENCY_BY_REGION_BIT
+			0, nullptr,							// Memory Barriers
+			0, nullptr,							// Buffer Memory Barriers
+			2, memBarrier.data()				// Image Memory Barriers
+		);
+
+		targetResolution.x = std::max<int32_t>(sourceResolution.x / 2, 1);
+		targetResolution.y = std::max<int32_t>(sourceResolution.y / 2, 1);
+		targetResolution.z = 1;
+
+		/* Defines Image Blit : Src Image + miplevel to read from | Dst Image + mipLevel to write in*/
+		VkImageBlit blit{
+			VkImageSubresourceLayers { VK_IMAGE_ASPECT_COLOR_BIT, readLevel, 0, 1 },
+			{ {0, 0, 0}, {sourceResolution} },
+			VkImageSubresourceLayers { VK_IMAGE_ASPECT_COLOR_BIT, writeLevel, 0, 1 },
+			{ {0, 0, 0}, {targetResolution} }
+		};
+
+		/* Image Blit Command */
+		vkCmdBlitImage(
+			m_context.cbMipmapping,
+			uploadedTexture.image,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			uploadedTexture.image,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1, &blit,
+			VK_FILTER_LINEAR
+		);
+
+		sourceResolution = targetResolution;
+	}
+
+	VkImageSubresourceRange imageRange{
+			VK_IMAGE_ASPECT_COLOR_BIT,		// aspectMask
+			0,								// baseMipLevel
+			uploadedTexture.mipCount - 1,	// levelCount
+			0,								// baseArrayLayer
+			1								// layerCount
+	};
+
+	/* 2 different transitions AFTER blitting */
+	std::array<VkImageMemoryBarrier, 2> memBarrier;
+
+	/* 0..maxLevel - 1 TRANSFER_SRC to SHADER_READ */
+	memBarrier[0].sType					= VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	memBarrier[0].pNext					= nullptr;
+	memBarrier[0].oldLayout				= VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	memBarrier[0].newLayout				= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	memBarrier[0].srcQueueFamilyIndex	= VK_QUEUE_FAMILY_IGNORED;
+	memBarrier[0].dstQueueFamilyIndex	= VK_QUEUE_FAMILY_IGNORED;
+	memBarrier[0].image					= uploadedTexture.image;
+	memBarrier[0].subresourceRange		= imageRange;
+	memBarrier[0].srcAccessMask			= VK_ACCESS_NONE;
+	memBarrier[0].dstAccessMask			= VK_ACCESS_NONE;
+
+	imageRange.baseMipLevel = uploadedTexture.mipCount - 1;
+	imageRange.levelCount	= 1;
+
+	/* maxLevel TRANSFER_DST to SHADER_READ */
+	memBarrier[1].sType					= VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	memBarrier[1].pNext					= nullptr;
+	memBarrier[1].oldLayout				= VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	memBarrier[1].newLayout				= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	memBarrier[1].srcQueueFamilyIndex	= VK_QUEUE_FAMILY_IGNORED;
+	memBarrier[1].dstQueueFamilyIndex	= VK_QUEUE_FAMILY_IGNORED;
+	memBarrier[1].image					= uploadedTexture.image;
+	memBarrier[1].subresourceRange		= imageRange;
+	memBarrier[1].srcAccessMask			= VK_ACCESS_TRANSFER_WRITE_BIT;
+	memBarrier[1].dstAccessMask			= VK_ACCESS_NONE;
+
+	vkCmdPipelineBarrier(
+		m_context.cbMipmapping,
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,	// next transfer stage (next iteration)
+		0,										// 0 || VK_DEPENDENCY_BY_REGION_BIT
+		0, nullptr,								// [0] Memory Barriers
+		0, nullptr,								// [0] Buffer Memory Barriers
+		2, memBarrier.data()					// [2] Image Memory Barriers
+	);
+
+	/* RECORDING - END */
+	vkEndCommandBuffer(m_context.cbMipmapping);
+
+	VkSubmitInfo submitInfo;
+	submitInfo.sType				= VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext				= nullptr;
+	submitInfo.commandBufferCount	= 1;
+	submitInfo.pCommandBuffers		= &m_context.cbMipmapping;
+	submitInfo.waitSemaphoreCount	= 0;
+	submitInfo.pWaitSemaphores		= nullptr;
+	submitInfo.pWaitDstStageMask	= nullptr;
+	submitInfo.signalSemaphoreCount = 0;
+	submitInfo.pSignalSemaphores	= nullptr;
+
+	/* Submission of VkCommandBuffer onto VkQueue */
+	vkQueueSubmit(m_context.deviceQueue, 1, &submitInfo, m_context.fenceSetupTask);
+
+	/* Waits until CommandBuffers were submitted => "Flush and Invalidate all"/complete memory barrier */
+	vkWaitForFences(uploadedTexture.hostDevice, 1, &m_context.fenceSetupTask, VK_TRUE, std::numeric_limits<uint32_t>::max());
+	vkResetFences(uploadedTexture.hostDevice, 1, &m_context.fenceSetupTask);
+}
+
+void pje::renderer::RendererVK::recordCbRenderingFor(const pje::engine::types::LSysObject& renderable, uint32_t imgIndex) {
+	VkCommandBufferBeginInfo cbBeginInfo;
+	cbBeginInfo.sType				= VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cbBeginInfo.pNext				= nullptr;
+	cbBeginInfo.flags				= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	cbBeginInfo.pInheritanceInfo	= nullptr;
+	vkBeginCommandBuffer(m_context.cbsRendering[imgIndex], &cbBeginInfo);
+
+	static VkClearValue clearMsaa;
+	static VkClearValue clearDepth;
+	static VkClearValue clearResolve;
+	clearMsaa.color					= { 0.10f, 0.11f, 0.14f, 1.0f };
+	clearDepth.depthStencil.depth	= 1.0f;
+	clearResolve.color				= { 0.10f, 0.11f, 0.14f, 1.0f };
+	static VkClearValue clearValues[3]{ clearMsaa, clearDepth, clearResolve };
+
+	VkRenderPassBeginInfo rpBeginInfo;
+	rpBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	rpBeginInfo.pNext = nullptr;
+	rpBeginInfo.renderPass = m_context.renderPass;
+	rpBeginInfo.renderArea.offset = { 0, 0 };
+	rpBeginInfo.renderArea.extent = { m_renderWidth, m_renderHeight };
+	rpBeginInfo.clearValueCount = 3;
+	rpBeginInfo.pClearValues = clearValues;
+	rpBeginInfo.framebuffer = m_context.renderPassFramebuffers[imgIndex];
+	vkCmdBeginRenderPass(m_context.cbsRendering[imgIndex], &rpBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+	vkCmdBindPipeline(m_context.cbsRendering[imgIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, m_context.pipeline);
+	vkCmdBindDescriptorSets(
+		m_context.cbsRendering[imgIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, m_context.pipelineLayout, 0, 1, &m_context.descriptorSet, 0, nullptr
+	);
+
+	static VkDeviceSize offsets[]{ 0 };
+	vkCmdBindVertexBuffers(m_context.cbsRendering[imgIndex], 0, 1, &m_context.buffVertices.buffer, offsets);
+	vkCmdBindIndexBuffer(m_context.cbsRendering[imgIndex], m_context.buffIndices.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+	/* Drawing all meshes of each primitive */
+	for (const auto& primitive : renderable.m_objectPrimitives) {
+		for (const auto& mesh : primitive.m_meshes) {
+			vkCmdDrawIndexed(
+				m_context.cbsRendering[imgIndex],
+				mesh.m_indices.size(),
+				m_instanceCount,
+				primitive.m_offsetPriorPrimitivesIndices + mesh.m_offsetPriorMeshesIndices,
+				primitive.m_offsetPriorPrimitivesVertices + mesh.m_offsetPriorMeshesVertices,
+				0
+			);
+		}
+	}
+
+	vkCmdEndRenderPass(m_context.cbsRendering[imgIndex]);
+	vkEndCommandBuffer(m_context.cbsRendering[imgIndex]);
 }
