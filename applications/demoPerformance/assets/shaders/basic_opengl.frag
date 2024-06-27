@@ -16,7 +16,7 @@ uniform sampler2D texSampler2D;
 void main() {
 	/* basic shading for demo */
 	vec3	nNormal		= normalize(vertexData.normal);
-	float	cosTheta	= max(nNormal.z, 0.0f);			// TODO( dot(nNormal, cam_vec3) )
+	float	cosTheta	= max(nNormal.z, 0.0f);
 
 	/* discarding fully transparent fragments to avoid wrong color blending */
 	color = texture(texSampler2D, vertexData.uv);

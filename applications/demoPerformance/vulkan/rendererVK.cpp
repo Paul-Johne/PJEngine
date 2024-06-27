@@ -1,5 +1,5 @@
 #include "rendererVK.h"
-//#define DEBUG
+#define DEBUG
 
 pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLFWwindow* const window, const pje::engine::types::LSysObject& renderable) : 
 	m_context(), m_renderWidth(parser.m_width), m_renderHeight(parser.m_height), m_windowIconified(false), m_vsync(parser.m_vsync), 
@@ -34,8 +34,8 @@ pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLF
 	setDescriptorSet(
 		std::vector<DescriptorSetElementVK>{
 			{VkDescriptorType::VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT}, 
-			{VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, static_cast<uint32_t>(renderable.m_boneRefs.size()), VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT}, 
-			{VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, static_cast<uint32_t>(renderable.m_bones.size()), VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT}, 
+			{VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT}, 
+			{VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VkShaderStageFlagBits::VK_SHADER_STAGE_VERTEX_BIT}, 
 			{VkDescriptorType::VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VkShaderStageFlagBits::VK_SHADER_STAGE_FRAGMENT_BIT}
 		}
 	);
