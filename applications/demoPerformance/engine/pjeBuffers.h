@@ -130,7 +130,7 @@ namespace pje::engine::types {
 		void updateMVP();
 
 		/* animation logic => m_bones manipulation */
-		void animWindBlow(const float deltaTime, const float blowStrength = 1.0f);
+		void animWindBlow(const float deltaTimeInSeconds, const float blowStrength = 1.0f);
 		std::vector<glm::mat4> getBoneMatrices() const;
 	};
 }

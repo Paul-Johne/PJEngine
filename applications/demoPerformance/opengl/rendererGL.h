@@ -2,6 +2,7 @@
 	#pragma once
 
 /* Third Party Files */
+	#include <cstdint>		// fixed size integer
 	#include <fstream>		// read from files
 	#include <iostream>		// i/o stream
 
@@ -18,16 +19,23 @@ namespace pje::renderer {
 	class RendererGL final {
 	public:
 		RendererGL() = delete;
-		RendererGL(const pje::engine::ArgsParser& parser, GLFWwindow* const window, pje::engine::types::LSysObject renderable);
+		RendererGL(const pje::engine::ArgsParser& parser, GLFWwindow* const window, const pje::engine::types::LSysObject& renderable);
 		~RendererGL();
 
 		/** Methods for app.cpp **/
 		void renderIn(GLFWwindow* window);
 
 	private:
-		uint16_t	m_renderWidth;
-		uint16_t	m_renderHeight;
-		bool		m_windowIconified;
-		bool		m_vsync;
+		enum class AnisotropyLevel { Disabled, TWOx, FOURx, EIGHTx, SIXTEENx };
+
+		uint16_t			m_renderWidth;
+		uint16_t			m_renderHeight;
+		bool				m_windowIconified;
+		bool				m_vsync;
+		AnisotropyLevel		m_anisotropyLevel;
+		uint8_t				m_msaaFactor;
+		uint8_t				m_instanceCount;
+
+		void setXXX();
 	};
 }

@@ -1,5 +1,6 @@
 # PJEngine : A Platform-Independent Real-Time Renderer Using The Vulkan SDK
-Developed as part of the practial project at Cologne University of Applied Sciences (*Start: SS2022*)
+Developed during my time at Cologne University of Applied Sciences (**Start: SS2022**)\
+`WARNING` : This _README_ is outdated.
 
 ![Gif](https://github.com/Paul-Johne/Procedural-Generation-with-Vulkan/blob/master/gifsForGithub/PJEngine_cover.gif)
 

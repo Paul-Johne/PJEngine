@@ -1,5 +1,5 @@
 #include "rendererVK.h"
-#define DEBUG
+//#define DEBUG
 
 pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLFWwindow* const window, const pje::engine::types::LSysObject& renderable) : 
 	m_context(), m_renderWidth(parser.m_width), m_renderHeight(parser.m_height), m_windowIconified(false), m_vsync(parser.m_vsync), 
@@ -76,7 +76,7 @@ pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLF
 	allocateCommandbufferOf(m_context.commandPool, 1, &m_context.cbStaging);
 	allocateCommandbufferOf(m_context.commandPool, 1, &m_context.cbMipmapping);
 
-	/* NEXT MANUAL STEPS: Uploading, Binding, Rendering */
+	/* NEXT MANUAL STEPS: Uploading, Binding, Updating, Rendering */
 }
 
 pje::renderer::RendererVK::~RendererVK() {
@@ -418,26 +418,26 @@ void pje::renderer::RendererVK::renderIn(GLFWwindow* window, const pje::engine::
 
 		VkPipelineStageFlags waitStageMask[]{ VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 		VkSubmitInfo submitInfo;
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.pNext = nullptr;
-		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pWaitSemaphores = &m_context.semSwapImgReceived;
-		submitInfo.pWaitDstStageMask = waitStageMask;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &m_context.cbsRendering[imgIndex];
+		submitInfo.sType				= VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.pNext				= nullptr;
+		submitInfo.waitSemaphoreCount	= 1;
+		submitInfo.pWaitSemaphores		= &m_context.semSwapImgReceived;
+		submitInfo.pWaitDstStageMask	= waitStageMask;
+		submitInfo.commandBufferCount	= 1;
+		submitInfo.pCommandBuffers		= &m_context.cbsRendering[imgIndex];
 		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = &m_context.semImgRendered;
+		submitInfo.pSignalSemaphores	= &m_context.semImgRendered;
 		vkQueueSubmit(m_context.deviceQueue, 1, &submitInfo, m_context.fenceImgRendered);
 
 		VkPresentInfoKHR presentInfo;
-		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-		presentInfo.pNext = nullptr;
-		presentInfo.waitSemaphoreCount = 1;
-		presentInfo.pWaitSemaphores = &m_context.semImgRendered;
-		presentInfo.swapchainCount = 1;
-		presentInfo.pSwapchains = &m_context.swapchain;
-		presentInfo.pImageIndices = &imgIndex;
-		presentInfo.pResults = nullptr;
+		presentInfo.sType				= VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		presentInfo.pNext				= nullptr;
+		presentInfo.waitSemaphoreCount	= 1;
+		presentInfo.pWaitSemaphores		= &m_context.semImgRendered;
+		presentInfo.swapchainCount		= 1;
+		presentInfo.pSwapchains			= &m_context.swapchain;
+		presentInfo.pImageIndices		= &imgIndex;
+		presentInfo.pResults			= nullptr;
 		vkQueuePresentKHR(m_context.deviceQueue, &presentInfo);
 	}
 	else {

@@ -95,17 +95,18 @@ void pje::engine::types::LSysObject::updateMVP() {
 	m_matrices.mvp = m_matrices.projectionMatrix * m_matrices.viewMatrix * m_matrices.modelMatrix;
 }
 
-void pje::engine::types::LSysObject::animWindBlow(const float deltaTime, const float blowStrength) {
-	/* update m_bones to simulate an even changing wind power affecting the bones */
-	const static glm::mat4 identityMat		= glm::mat4(1.0f);
+void pje::engine::types::LSysObject::animWindBlow(const float deltaTimeInSeconds, const float blowStrength) {
+	/* Updates m_bones to simulate an even changing wind power affecting the bones */
+
 	constexpr float PI						= 3.1415927f;
+	const static glm::mat4 identityMat		= glm::mat4(1.0f);
 	const static float tiltUnitInRadians	= 20.0f * (PI / 180.0f)  ;
 
 	glm::mat4 tiltMat = glm::rotate(
-		identityMat, std::sinf(tiltUnitInRadians * deltaTime) * blowStrength, glm::vec3(0.0f, 0.0f, 1.0f)
+		identityMat, std::sinf(tiltUnitInRadians * deltaTimeInSeconds) * blowStrength, glm::vec3(0.0f, 0.0f, 1.0f)
 	);
 
-	// TODO(scene graph animation) !!
+	// TODO(scene graph animation => child-parent-relation required)
 	for (auto& bone : m_bones) {
 		bone.animationpose = bone.restpose * tiltMat;
 	}
