@@ -139,12 +139,12 @@ namespace pje::renderer {
 		void uploadRenderable(const pje::engine::types::LSysObject& renderable);
 		void uploadTextureOf(const pje::engine::types::LSysObject& renderable, bool genMipmaps, TextureType type);
 		void uploadBuffer(const pje::engine::types::LSysObject& renderable, BufferVK& m_VarRaw, BufferType type);
-		/* 2/4: Binding shader resources */
+		/* 2/4: Binding shader resources (to descriptor set) */
 		void bindToShader(const BufferVK& buffer, uint32_t dstBinding, VkDescriptorType descType);
 		void bindToShader(const ImageVK& image, uint32_t dstBinding, VkDescriptorType descType);
 		/* 3/4: Rendering */
 		void renderIn(GLFWwindow* window, const pje::engine::types::LSysObject& renderable);
-		/* 4/4: Updating */
+		/* 4/4: Updating shader resources */
 		void updateBuffer(const pje::engine::types::LSysObject& renderable, BufferVK& m_Var, BufferType type);
 
 	private:

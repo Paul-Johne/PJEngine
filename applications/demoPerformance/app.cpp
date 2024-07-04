@@ -1,5 +1,22 @@
 #include "app.h"
-#define PERFORMANCE_TEST_SECONDS 15
+
+/* TODO LIST */
+// 1. animWindBlow: not timerelated						- DONE
+// 2. complete OpenGL renderer							- ____
+// 3. Check content: glReadPixels() and <Vulkan-Check>	- ____
+
+/* Only one of these are allowed to be active */
+#define QUANTITY_TEST
+//#define TIME_TEST
+
+#ifdef QUANTITY_TEST
+	#define PERFORMANCE_TEST_FRAMES 20000
+#endif
+#ifdef TIME_TEST
+	#define PERFORMANCE_TEST_SECONDS 15
+#endif
+
+/* ######################################################################## */
 
 int main(int argc, char* argv[]) {
 	std::cout << "[OS] \tC++ Version: " << __cplusplus << "\n";
@@ -71,22 +88,26 @@ int main(int argc, char* argv[]) {
 		if (parser->m_graphicsAPI.find("vulkan") != std::string::npos) {
 			/* No window context is allowed for Vulkan since it's managed manually by design */
 			glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);					// no glfw context creation required for Vulkan
+			glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);						// no resizing for both APIs
+
+			window = glfwCreateWindow(
+				parser->m_width, parser->m_height, "Bachelor", nullptr, nullptr
+			);
 		}
 
 		/* OpenGL */
 		else if (parser->m_graphicsAPI.find("opengl") != std::string::npos) {
 			glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);				// context creation for OpenGL
 			glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);					// double buffering
-			if (!parser->m_vsync)											// vsync
-				glfwSwapInterval(0);
-			else
-				glfwSwapInterval(1);
-		}
+			glfwWindowHint(GLFW_SAMPLES, 4);								// default framebuffer => 4x MSAA
+			glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);						// no resizing for both APIs
 
-		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-		window = glfwCreateWindow(
-			parser->m_width, parser->m_height, "Bachelor", nullptr, nullptr
-		);
+			window = glfwCreateWindow(
+				parser->m_width, parser->m_height, "Bachelor", nullptr, nullptr
+			);
+		}
+		
+		/* Window creation failed */
 		if (window == NULL) {
 			glfwTerminate();
 			return -2;
@@ -108,26 +129,35 @@ int main(int argc, char* argv[]) {
 			glm::radians(60.0f), parser->m_width / (float)parser->m_height, 0.1f, 100.0f, pje::engine::types::LSysObject::API::OpenGL
 		);
 	plantTurtle->m_renderable.updateMVP();
-	
-	/* Scene preparation - Time variables */
-	auto testDuration	= std::chrono::seconds(PERFORMANCE_TEST_SECONDS);
-	auto startTime		= std::chrono::steady_clock::now();
+
+	/* Scene preparation - Test specific variables */
+#ifdef QUANTITY_TEST
+	uint32_t deltaFrame = 1;
+#endif
+#ifdef TIME_TEST
+	auto testDuration = std::chrono::seconds(PERFORMANCE_TEST_SECONDS);
+	std::chrono::milliseconds deltaTime;
+#endif
+
+	/* Scene preparation - Start */
+	auto startTime = std::chrono::steady_clock::now();
 
 	/* API-specific part: Vulkan | OpenGL */
 	try {
 		/* Vulkan */
 		if (parser->m_graphicsAPI.find("vulkan") != std::string::npos) {
+			/* Renderer - Init */
 			std::unique_ptr<pje::renderer::RendererVK> vkRenderer =
 				std::make_unique<pje::renderer::RendererVK>(*parser, window, plantTurtle->m_renderable);
 
-			/* Engine data --> Vulkan buffer for shaders */
+			/* Uploading shader resources */
 			vkRenderer->uploadRenderable(plantTurtle->m_renderable);
 			vkRenderer->uploadTextureOf(plantTurtle->m_renderable, true, pje::renderer::RendererVK::TextureType::Albedo);
 			vkRenderer->uploadBuffer(plantTurtle->m_renderable, vkRenderer->m_buffUniformMVP, pje::renderer::RendererVK::BufferType::UniformMVP);
 			vkRenderer->uploadBuffer(plantTurtle->m_renderable, vkRenderer->m_buffStorageBoneRefs, pje::renderer::RendererVK::BufferType::StorageBoneRefs);
 			vkRenderer->uploadBuffer(plantTurtle->m_renderable, vkRenderer->m_buffStorageBones, pje::renderer::RendererVK::BufferType::StorageBones);
 
-			/* Binding shader resources */
+			/* Binding shader resources - ONCE to descriptor set */
 			vkRenderer->bindToShader(vkRenderer->m_buffUniformMVP, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 			vkRenderer->bindToShader(vkRenderer->m_buffStorageBoneRefs, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 			vkRenderer->bindToShader(vkRenderer->m_buffStorageBones, 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
@@ -142,26 +172,43 @@ int main(int argc, char* argv[]) {
 			/* Renderloop */
 			auto startRenderingTime = std::chrono::steady_clock::now();
 			while (!glfwWindowShouldClose(window)) {
-				auto deltaTime = 
-					std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startRenderingTime);
+
+#ifdef QUANTITY_TEST
+				plantTurtle->m_renderable.animWindBlow(deltaFrame * 1e-3, 0.5f);
+#endif
+#ifdef TIME_TEST
+				deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startRenderingTime);
+				plantTurtle->m_renderable.animWindBlow(deltaTime.count() * 1e-3, 0.5f);
+#endif
 
 				/* Updating shader resources */
-				plantTurtle->m_renderable.animWindBlow(deltaTime.count() * 1e-3, 0.5f);
 				vkRenderer->updateBuffer(plantTurtle->m_renderable, vkRenderer->m_buffStorageBones, pje::renderer::RendererVK::BufferType::StorageBones);
 
 				vkRenderer->renderIn(window, plantTurtle->m_renderable);
 				glfwPollEvents();
 
-				/* Close window after reaching testDuration */
+				/* Closing window after condition is met */
+#ifdef QUANTITY_TEST
+				if (deltaFrame < PERFORMANCE_TEST_FRAMES)
+					++deltaFrame;
+				else
+					glfwSetWindowShouldClose(window, GLFW_TRUE);
+#endif
+#ifdef TIME_TEST
 				if (deltaTime >= testDuration)
 					glfwSetWindowShouldClose(window, GLFW_TRUE);
+#endif
 			}
 		}
 
 		/* OpenGL */
 		else if (parser->m_graphicsAPI.find("opengl") != std::string::npos) {
+			/* Renderer - Init */
 			std::unique_ptr<pje::renderer::RendererGL> glRenderer = 
 				std::make_unique<pje::renderer::RendererGL>(*parser, window, plantTurtle->m_renderable);
+
+			/* Uploading shader resources */
+			// TODO
 
 			std::cout <<
 				"[PJE] \tOpenGL setup time:\t" <<
@@ -172,18 +219,32 @@ int main(int argc, char* argv[]) {
 			/* Renderloop */
 			auto startRenderingTime = std::chrono::steady_clock::now();
 			while (!glfwWindowShouldClose(window)) {
-				auto deltaTime =
-					std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startRenderingTime);
+
+#ifdef QUANTITY_TEST
+				plantTurtle->m_renderable.animWindBlow(deltaFrame * 1e-3, 0.5f);
+#endif
+#ifdef TIME_TEST
+				deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startRenderingTime);
+				plantTurtle->m_renderable.animWindBlow(deltaTime.count() * 1e-3, 0.5f);
+#endif
 
 				/* Updating shader resources */
-				plantTurtle->m_renderable.animWindBlow(deltaTime.count() * 1e-3, 0.5f);
+				// TODO
 
 				glRenderer->renderIn(window);
 				glfwPollEvents();
 
-				/* Close window after reaching testDuration */
+				/* Closing window after condition is met */
+#ifdef QUANTITY_TEST
+				if (deltaFrame < PERFORMANCE_TEST_FRAMES)
+					++deltaFrame;
+				else
+					glfwSetWindowShouldClose(window, GLFW_TRUE);
+#endif
+#ifdef TIME_TEST
 				if (deltaTime >= testDuration)
 					glfwSetWindowShouldClose(window, GLFW_TRUE);
+#endif
 			}
 		}
 

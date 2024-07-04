@@ -1,6 +1,8 @@
 #include "rendererVK.h"
 //#define DEBUG
 
+/* ### Public methods ### */
+
 pje::renderer::RendererVK::RendererVK(const pje::engine::ArgsParser& parser, GLFWwindow* const window, const pje::engine::types::LSysObject& renderable) : 
 	m_context(), m_renderWidth(parser.m_width), m_renderHeight(parser.m_height), m_windowIconified(false), m_vsync(parser.m_vsync), 
 	m_anisotropyLevel(AnisotropyLevel::TWOx), m_msaaFactor(VkSampleCountFlagBits::VK_SAMPLE_COUNT_4_BIT), m_instanceCount(parser.m_amountOfObjects) {
@@ -473,6 +475,8 @@ void pje::renderer::RendererVK::updateBuffer(const pje::engine::types::LSysObjec
 		break;
 	}
 }
+
+/* ### Private methods ### */
 
 std::string pje::renderer::RendererVK::getApiVersion() {
 	uint32_t apiVersion;
