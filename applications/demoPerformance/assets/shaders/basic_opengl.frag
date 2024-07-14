@@ -10,7 +10,7 @@ in VertexData vertexData;
 out vec4 color;
 
 /* Sampler => implicit location */
-uniform sampler2D texSampler2D;
+uniform sampler2D albedo;
 
 /* Entry Point */
 void main() {
@@ -19,7 +19,7 @@ void main() {
 	float	cosTheta	= max(nNormal.z, 0.0f);
 
 	/* discarding fully transparent fragments to avoid wrong color blending */
-	color = texture(texSampler2D, vertexData.uv);
+	color = texture(albedo, vertexData.uv);
 	if (color.a == 0.0f) {
 		discard;
 	}

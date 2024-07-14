@@ -18,14 +18,13 @@ struct BoneReference {
 	float	weight;		// value between 0 and 1
 };
 
-/* Uniform Buffers => implicit location */
-struct Matrices {
+/* Uniform Buffers => explicit binding location */
+layout(binding = 0, std140) uniform Matrices {
 	mat4 mvp;
 	mat4 modelMatrix;
 	mat4 viewMatrix;
 	mat4 projectionMatrix;
-};
-uniform Matrices matrices;
+} matrices;
 
 /* Storage Buffers => bindings SHOULD not interfere with uniform buffers */
 layout(binding = 0, std430) readonly buffer BoneRefs {

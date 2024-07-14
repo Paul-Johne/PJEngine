@@ -148,7 +148,7 @@ pje::renderer::RendererVK::~RendererVK() {
 	if (m_context.instance != VK_NULL_HANDLE)
 		vkDestroyInstance(m_context.instance, nullptr);									// + cleanup of <VkPhysicalDevice>
 
-	std::cout << "[VK] \tCleanup of handles --- DONE\n" << std::endl;
+	std::cout << "[VK] \tCleanup of handles --- DONE" << std::endl;
 }
 
 void pje::renderer::RendererVK::uploadRenderable(const pje::engine::types::LSysObject& renderable) {
@@ -1892,14 +1892,14 @@ void pje::renderer::RendererVK::recordCbRenderingFor(const pje::engine::types::L
 	static VkClearValue clearValues[3]{ clearMsaa, clearDepth, clearResolve };
 
 	VkRenderPassBeginInfo rpBeginInfo;
-	rpBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-	rpBeginInfo.pNext = nullptr;
-	rpBeginInfo.renderPass = m_context.renderPass;
-	rpBeginInfo.renderArea.offset = { 0, 0 };
-	rpBeginInfo.renderArea.extent = { m_renderWidth, m_renderHeight };
-	rpBeginInfo.clearValueCount = 3;
-	rpBeginInfo.pClearValues = clearValues;
-	rpBeginInfo.framebuffer = m_context.renderPassFramebuffers[imgIndex];
+	rpBeginInfo.sType				= VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	rpBeginInfo.pNext				= nullptr;
+	rpBeginInfo.renderPass			= m_context.renderPass;
+	rpBeginInfo.renderArea.offset	= { 0, 0 };
+	rpBeginInfo.renderArea.extent	= { m_renderWidth, m_renderHeight };
+	rpBeginInfo.clearValueCount		= 3;
+	rpBeginInfo.pClearValues		= clearValues;
+	rpBeginInfo.framebuffer			= m_context.renderPassFramebuffers[imgIndex];
 	vkCmdBeginRenderPass(m_context.cbsRendering[imgIndex], &rpBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 	vkCmdBindPipeline(m_context.cbsRendering[imgIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, m_context.pipeline);
@@ -1918,8 +1918,8 @@ void pje::renderer::RendererVK::recordCbRenderingFor(const pje::engine::types::L
 				m_context.cbsRendering[imgIndex],
 				mesh.m_indices.size(),
 				m_instanceCount,
-				primitive.m_offsetPriorPrimitivesIndices + mesh.m_offsetPriorMeshesIndices,
-				primitive.m_offsetPriorPrimitivesVertices + mesh.m_offsetPriorMeshesVertices,
+				primitive.m_offsetPriorPrimitivesIndices + mesh.m_offsetPriorMeshesIndices,		// baseIndex
+				primitive.m_offsetPriorPrimitivesVertices + mesh.m_offsetPriorMeshesVertices,	// <actualIndexToVBO> = thisOffsetSum + baseIndex
 				0
 			);
 		}

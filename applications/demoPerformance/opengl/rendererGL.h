@@ -18,14 +18,36 @@
 
 namespace pje::renderer {
 
+	struct BufferRenderableGL {
+		uint32_t			vaoHandle;
+		uint32_t			verticesHandle;
+		signed long long	verticesSize;
+		uint32_t			indicesHandle;
+		signed long long	indicesSize;
+
+		~BufferRenderableGL() {
+			glDeleteBuffers(1, &indicesHandle);
+			glDeleteBuffers(1, &verticesHandle);
+			glDeleteVertexArrays(1, &vaoHandle);
+		}
+	};
+
+	struct ImageGL {
+		uint32_t		handle;
+		std::string		samplerName;
+
+		~ImageGL() {
+			glDeleteTextures(1, &handle);
+		}
+	};
+
 	/* HandlesGL - collection of all handle variables needed for 1 RendererGL */
 	struct HandlesGL {
 		uint32_t				vertexShaderModule;
 		uint32_t				fragmentShaderModule;
 		uint32_t				shaderProgram;
 
-		// <Using default framebuffer> 
-		// default fbo := depth + msaa + resolve/back buffer
+		BufferRenderableGL		buffRenderable;
 	};
 
 	/* RendererGL - OpenGL powered renderer for demoPerformance */
@@ -33,6 +55,11 @@ namespace pje::renderer {
 	public:
 		enum class TextureType	{ Albedo };
 		enum class BufferType	{ UniformMVP, StorageBoneRefs, StorageBones };
+
+		ImageGL		m_texAlbedo;
+		uint32_t	m_buffUniformMVP;
+		uint32_t	m_buffStorageBoneRefs;
+		uint32_t	m_buffStorageBones;
 
 		RendererGL() = delete;
 		RendererGL(const pje::engine::ArgsParser& parser, GLFWwindow* const window, const pje::engine::types::LSysObject& renderable);
@@ -44,11 +71,11 @@ namespace pje::renderer {
 		void uploadTextureOf(const pje::engine::types::LSysObject& renderable, bool genMipmaps, TextureType type);
 		void uploadBuffer(const pje::engine::types::LSysObject& renderable, BufferType type);
 		/* 2/4: Binding shader resources => MIGHT BE DIFFERENT THAN Vulkan Binding !! */
-		// TODO
+		void bindRenderable(const pje::engine::types::LSysObject& renderable);
 		/* 3/4: Rendering */
-		void renderIn(GLFWwindow* window);
+		void renderIn(GLFWwindow* window, const pje::engine::types::LSysObject& renderable);
 		/* 4/4: Updating shader resources */
-		// TODO
+		void updateBuffer(const pje::engine::types::LSysObject& renderable, BufferType type);
 
 	private:
 		enum class AnisotropyLevel { Disabled, TWOx, FOURx, EIGHTx, SIXTEENx };

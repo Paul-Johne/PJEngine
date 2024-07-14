@@ -35,7 +35,7 @@ namespace pje::engine::types {
 		static VkVertexInputBindingDescription getVulkanBindingDesc();
 	};
 
-	/* Texture - 1 Primitive <-> 1 Texture */
+	/* Texture - 1 Primitive <-> 1 Texture | uncompressedTexture := ABGR8888 */
 	struct Texture {
 		std::string					name;
 		std::vector<unsigned char>	uncompressedTexture;

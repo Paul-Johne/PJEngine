@@ -1,19 +1,21 @@
 #include "app.h"
 
-/* TODO LIST */
-// 1. animWindBlow: not timerelated						- DONE
-// 2. complete OpenGL renderer							- ____
-// 3. Check content: glReadPixels() and <Vulkan-Check>	- ____
+/* TASK LIST */
+// 1. animWindBlow: not time related					- DONE
+// 2. complete OpenGL renderer							- ALPHA
+// 3. Check content: glReadPixels() and <Vulkan-Check>	- TODO
 
-/* Only one of these are allowed to be active */
-#define QUANTITY_TEST
-//#define TIME_TEST
-
-#ifdef QUANTITY_TEST
-	#define PERFORMANCE_TEST_FRAMES 20000
+/* Choose between quantity and time test: */
+#if 1
+	#define QUANTITY_TEST
+#else
+	#define TIME_TEST
 #endif
-#ifdef TIME_TEST
-	#define PERFORMANCE_TEST_SECONDS 15
+
+#if defined(QUANTITY_TEST)
+	#define PERFORMANCE_TEST_FRAMES		20000
+#elif defined(TIME_TEST)
+	#define PERFORMANCE_TEST_SECONDS	5
 #endif
 
 /* ######################################################################## */
@@ -21,14 +23,14 @@
 int main(int argc, char* argv[]) {
 	std::cout << "[OS] \tC++ Version: " << __cplusplus << "\n";
 	std::cout << "[OS] \tValue of argc: " << argc << std::endl;
-
+	
 	/* API-unspecific variables */
 	std::unique_ptr<pje::engine::ArgsParser>	parser;
 	std::unique_ptr<pje::engine::LSysGenerator>	generator;
 	std::unique_ptr<pje::engine::Sourceloader>	loader;
 	std::unique_ptr<pje::engine::PlantTurtle>	plantTurtle;
 	/* API-specific variables */
-	GLFWwindow*									window;
+	GLFWwindow*									window = nullptr;
 
 	/* Argument-Parser */
 	try {
@@ -108,8 +110,9 @@ int main(int argc, char* argv[]) {
 		}
 		
 		/* Window creation failed */
-		if (window == NULL) {
+		if (!window) {
 			glfwTerminate();
+			std::cout << "[PJE] \tNO API WAS FOUND TO CREATE GLFW WINDOW!" << std::endl;
 			return -2;
 		}
 	}
@@ -131,12 +134,13 @@ int main(int argc, char* argv[]) {
 	plantTurtle->m_renderable.updateMVP();
 
 	/* Scene preparation - Test specific variables */
-#ifdef QUANTITY_TEST
-	uint32_t deltaFrame = 1;
-#endif
-#ifdef TIME_TEST
-	auto testDuration = std::chrono::seconds(PERFORMANCE_TEST_SECONDS);
-	std::chrono::milliseconds deltaTime;
+#if defined(QUANTITY_TEST)
+	uint32_t					deltaFrame = 1;
+	std::vector<uint16_t>		renderDurations(PERFORMANCE_TEST_FRAMES);
+#elif defined(TIME_TEST)
+	auto						testDuration = std::chrono::seconds(PERFORMANCE_TEST_SECONDS);
+	std::chrono::milliseconds	deltaTime;
+	size_t						amountOfRenderedFrames = 0;
 #endif
 
 	/* Scene preparation - Start */
@@ -164,7 +168,7 @@ int main(int argc, char* argv[]) {
 			vkRenderer->bindToShader(vkRenderer->m_texAlbedo, 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
 			std::cout << 
-				"[PJE] \tVulkan setup time:\t" << 
+				"[PJE] \tVulkan setup time: " << 
 				std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startTime).count() << 
 				"ms" <<
 			std::endl;
@@ -173,31 +177,40 @@ int main(int argc, char* argv[]) {
 			auto startRenderingTime = std::chrono::steady_clock::now();
 			while (!glfwWindowShouldClose(window)) {
 
-#ifdef QUANTITY_TEST
+#if defined(QUANTITY_TEST)
 				plantTurtle->m_renderable.animWindBlow(deltaFrame * 1e-3, 0.5f);
-#endif
-#ifdef TIME_TEST
+#elif defined(TIME_TEST)
 				deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startRenderingTime);
 				plantTurtle->m_renderable.animWindBlow(deltaTime.count() * 1e-3, 0.5f);
 #endif
-
 				/* Updating shader resources */
 				vkRenderer->updateBuffer(plantTurtle->m_renderable, vkRenderer->m_buffStorageBones, pje::renderer::RendererVK::BufferType::StorageBones);
 
+#if defined(QUANTITY_TEST)
+				auto startFrameTime = std::chrono::steady_clock::now();
+#endif
+				/* Rendering.. */
 				vkRenderer->renderIn(window, plantTurtle->m_renderable);
-				glfwPollEvents();
+#if defined(TIME_TEST)
+				++amountOfRenderedFrames;
+#endif
 
-				/* Closing window after condition is met */
-#ifdef QUANTITY_TEST
+				/* Saving performance data | Closing window after condition is met */
+#if defined(QUANTITY_TEST)
+				renderDurations.at(PERFORMANCE_TEST_FRAMES - deltaFrame) = 
+					std::chrono::duration_cast<std::chrono::microseconds>(
+						std::chrono::steady_clock::now() - startFrameTime
+					).count();
+
 				if (deltaFrame < PERFORMANCE_TEST_FRAMES)
 					++deltaFrame;
 				else
 					glfwSetWindowShouldClose(window, GLFW_TRUE);
-#endif
-#ifdef TIME_TEST
+#elif defined(TIME_TEST)
 				if (deltaTime >= testDuration)
 					glfwSetWindowShouldClose(window, GLFW_TRUE);
 #endif
+				glfwPollEvents();
 			}
 		}
 
@@ -208,10 +221,17 @@ int main(int argc, char* argv[]) {
 				std::make_unique<pje::renderer::RendererGL>(*parser, window, plantTurtle->m_renderable);
 
 			/* Uploading shader resources */
-			// TODO
+			glRenderer->uploadRenderable(plantTurtle->m_renderable);
+			glRenderer->uploadTextureOf(plantTurtle->m_renderable, true, pje::renderer::RendererGL::TextureType::Albedo);
+			glRenderer->uploadBuffer(plantTurtle->m_renderable, pje::renderer::RendererGL::BufferType::UniformMVP);
+			glRenderer->uploadBuffer(plantTurtle->m_renderable, pje::renderer::RendererGL::BufferType::StorageBoneRefs);
+			glRenderer->uploadBuffer(plantTurtle->m_renderable, pje::renderer::RendererGL::BufferType::StorageBones);
+
+			/* Binding shader resources */
+			glRenderer->bindRenderable(plantTurtle->m_renderable);
 
 			std::cout <<
-				"[PJE] \tOpenGL setup time:\t" <<
+				"[PJE] \tOpenGL setup time: " <<
 				std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startTime).count() <<
 				"ms" <<
 			std::endl;
@@ -220,31 +240,40 @@ int main(int argc, char* argv[]) {
 			auto startRenderingTime = std::chrono::steady_clock::now();
 			while (!glfwWindowShouldClose(window)) {
 
-#ifdef QUANTITY_TEST
+#if defined(QUANTITY_TEST)
 				plantTurtle->m_renderable.animWindBlow(deltaFrame * 1e-3, 0.5f);
-#endif
-#ifdef TIME_TEST
+#elif defined(TIME_TEST)
 				deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startRenderingTime);
 				plantTurtle->m_renderable.animWindBlow(deltaTime.count() * 1e-3, 0.5f);
 #endif
-
 				/* Updating shader resources */
-				// TODO
+				glRenderer->updateBuffer(plantTurtle->m_renderable, pje::renderer::RendererGL::BufferType::StorageBones);
 
-				glRenderer->renderIn(window);
-				glfwPollEvents();
+#if defined(QUANTITY_TEST)
+				auto startFrameTime = std::chrono::steady_clock::now();
+#endif
+				/* Rendering.. */
+				glRenderer->renderIn(window, plantTurtle->m_renderable);
+#if defined(TIME_TEST)
+				++amountOfRenderedFrames;
+#endif
 
-				/* Closing window after condition is met */
-#ifdef QUANTITY_TEST
+				/* Saving performance data | Closing window after condition is met */
+#if defined(QUANTITY_TEST)
+				renderDurations.at(PERFORMANCE_TEST_FRAMES - deltaFrame) =
+					std::chrono::duration_cast<std::chrono::microseconds>(
+						std::chrono::steady_clock::now() - startFrameTime
+					).count();
+
 				if (deltaFrame < PERFORMANCE_TEST_FRAMES)
 					++deltaFrame;
 				else
 					glfwSetWindowShouldClose(window, GLFW_TRUE);
-#endif
-#ifdef TIME_TEST
+#elif defined(TIME_TEST)
 				if (deltaTime >= testDuration)
 					glfwSetWindowShouldClose(window, GLFW_TRUE);
 #endif
+				glfwPollEvents();
 			}
 		}
 
@@ -258,8 +287,18 @@ int main(int argc, char* argv[]) {
 	catch (std::runtime_error& ex) {
 		std::cout << "[ERROR] Exception thrown: " << ex.what() << std::endl;
 	}
-
-	/* Destroying and terminating GLFW window */
+	
+	/* Printing performance data | Terminating application */
+#if defined(QUANTITY_TEST)
+	std::cout << "[PJE] \tFrametime: max (" << 
+		*std::max_element(std::begin(renderDurations), std::end(renderDurations)) <<
+		"us) | min (" <<
+		*std::min_element(std::begin(renderDurations), std::end(renderDurations)) <<
+		"us)" <<
+	std::endl;
+#elif defined(TIME_TEST)
+	std::cout << "[PJE] \tFrames rendered: " << amountOfRenderedFrames << std::endl;
+#endif
 	glfwTerminate();
 	std::cout << "[PJE] \tPerformance test completed!" << std::endl;
 	return 0;
