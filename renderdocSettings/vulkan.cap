@@ -7,7 +7,7 @@
         ],
         "executable": "D:\\codeFiles\\CPP_Code\\PJEngine\\out\\build\\x64-Debug\\applications\\demoPerformance\\demoPerformance.exe",
         "inject": false,
-        "numQueuedFrames": 0,
+        "numQueuedFrames": 1,
         "options": {
             "allowFullscreen": true,
             "allowVSync": true,

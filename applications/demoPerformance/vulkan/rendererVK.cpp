@@ -448,7 +448,7 @@ void pje::renderer::RendererVK::renderIn(GLFWwindow* window, const pje::engine::
 }
 
 void pje::renderer::RendererVK::updateBuffer(const pje::engine::types::LSysObject& renderable, BufferVK& m_Var, BufferType type) {
-	void* dstPtr;
+	static void* dstPtr;
 
 	switch (type) {
 	case BufferType::UniformMVP:

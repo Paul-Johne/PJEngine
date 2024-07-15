@@ -5,6 +5,7 @@
 	#include <cstdint>		// fixed size integer
 	#include <string>		// std::string
 	#include <vector>		// std::vector
+	#include <limits>		// std::numeric_limits
 	#include <fstream>		// read from files
 	#include <sstream>		// parsing input (shader code)
 	#include <iostream>		// i/o stream

@@ -32,3 +32,28 @@
 	#include "engine/turtleInterpreter.h"
 	#include "opengl/rendererGL.h"
 	#include "vulkan/rendererVK.h"
+
+double getMedian(std::vector<size_t> dataset) {
+	auto n = dataset.size();
+
+	if (n % 2 == 0) {
+		std::nth_element(dataset.begin(), dataset.begin() + n / 2, dataset.end());
+		std::nth_element(dataset.begin(), dataset.begin() + (n - 1) / 2, dataset.end());
+
+		return (dataset[(n / 2)] + dataset[(n - 1) / 2]) / 2.0;
+	}
+	else {
+		std::nth_element(dataset.begin(), dataset.begin() + n / 2, dataset.end());
+
+		return dataset[n / 2];
+	}
+}
+
+double getStandardDeviation(std::vector<size_t> dataset, double mean) {
+	double sd = 0.0;
+
+	for (const auto& element : dataset) {
+		sd += pow(element - mean, 2);
+	}
+	return sqrt(sd / dataset.size());
+}

@@ -45,6 +45,10 @@ void pje::renderer::RendererGL::uploadRenderable(const pje::engine::types::LSysO
 	/* Binding VAO for VBO and IBO/EBO */
 	glBindVertexArray(m_handles.buffRenderable.vaoHandle);
 
+#ifdef DEBUG
+	std::cout << "[GL3W] \tsizeof(Vertex): " << sizeof(pje::engine::types::Vertex) << std::endl;
+#endif // DEBUG
+
 	/* 1) Vertices */
 	m_handles.buffRenderable.verticesSize = static_cast<signed long long>(
 		(
@@ -204,8 +208,8 @@ void pje::renderer::RendererGL::uploadBuffer(const pje::engine::types::LSysObjec
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_buffStorageBones);
 		glBufferData(
 			GL_SHADER_STORAGE_BUFFER,
-			sizeof(pje::engine::types::Bone) * renderable.m_bones.size(),
-			renderable.m_bones.data(),
+			sizeof(glm::mat4) * renderable.m_bones.size(),
+			renderable.getBoneMatrices().data(),
 			GL_STATIC_DRAW
 		);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
@@ -228,7 +232,7 @@ void pje::renderer::RendererGL::bindRenderable(const pje::engine::types::LSysObj
 	/* MVP Uniform Block */
 	glBindBufferBase(GL_UNIFORM_BUFFER, 0, m_buffUniformMVP);
 
-	/* Storage Buffer */
+	/* Storage Buffer(s) */
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_buffStorageBoneRefs);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_buffStorageBones);
 
@@ -249,27 +253,19 @@ void pje::renderer::RendererGL::renderIn(GLFWwindow* window, const pje::engine::
 		if (prog != m_handles.shaderProgram) 
 			glUseProgram(m_handles.shaderProgram);
 
-		/* Drawing meshes */
-
-		// Drawing test //
-		/*auto indexCount = 
-			renderable.m_objectPrimitives.back().m_meshes.back().m_indices.size() +
-			renderable.m_objectPrimitives.back().m_meshes.back().m_offsetPriorMeshesIndices +
-			renderable.m_objectPrimitives.back().m_offsetPriorPrimitivesIndices;
-		glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);*/
-
-		// Drawing each mesh of each primitive separately // primitive.m_offsetPriorPrimitivesVertices + mesh.m_offsetPriorMeshesVertices
+		/* Drawing */
+		// Drawing each mesh of each primitive separately //
 		for (const auto& primitive : renderable.m_objectPrimitives) {
 			for (const auto& mesh : primitive.m_meshes) {
-				glDrawElementsBaseVertex(
+				glDrawElementsInstancedBaseVertex(
 					GL_TRIANGLES,
 					static_cast<GLsizei>(mesh.m_indices.size()),
 					GL_UNSIGNED_INT,
 					(void*)(sizeof(uint32_t) * (primitive.m_offsetPriorPrimitivesIndices + mesh.m_offsetPriorMeshesIndices)),
-					0
+					m_instanceCount,
+					primitive.m_offsetPriorPrimitivesVertices + mesh.m_offsetPriorMeshesVertices
 				);
 			}
-			break;
 		}
 
 		/* Swapping buffers for double buffering */
@@ -309,8 +305,8 @@ void pje::renderer::RendererGL::updateBuffer(const pje::engine::types::LSysObjec
 		glBufferSubData(
 			GL_SHADER_STORAGE_BUFFER,
 			0,
-			sizeof(pje::engine::types::Bone) * renderable.m_bones.size(),
-			renderable.m_bones.data()
+			sizeof(glm::mat4) * renderable.m_bones.size(),
+			renderable.getBoneMatrices().data()
 		);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 

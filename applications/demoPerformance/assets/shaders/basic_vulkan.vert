@@ -57,8 +57,13 @@ void main() {
 			vec3(normal);
 	}
 
+	/* per Instance logic => gl_InstanceIndex */
+	vec4 posOut = matrices.modelMatrix * vec4(animationPos_weighted.xyz, 1.0f);
+	posOut.z += gl_InstanceIndex * 1.5f;
+
 	/* vertex shader output */
-	gl_Position = matrices.mvp * vec4(animationPos_weighted.xyz, 1.0f);
+	gl_Position = matrices.projectionMatrix * matrices.viewMatrix * posOut;
+
 	/* transpose(inverse(<matrix>)) to preserve normal */
 	vertexOut.normal = 
 		(matrices.viewMatrix * transpose(inverse(matrices.modelMatrix)) * 

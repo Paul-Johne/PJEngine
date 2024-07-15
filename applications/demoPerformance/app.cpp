@@ -1,10 +1,5 @@
 #include "app.h"
 
-/* TASK LIST */
-// 1. animWindBlow: not time related					- DONE
-// 2. complete OpenGL renderer							- ALPHA
-// 3. Check content: glReadPixels() and <Vulkan-Check>	- TODO
-
 /* Choose between quantity and time test: */
 #if 1
 	#define QUANTITY_TEST
@@ -122,7 +117,7 @@ int main(int argc, char* argv[]) {
 
 	/* Scene preparation - Renderable */
 	plantTurtle->m_renderable.placeObjectInWorld(glm::vec3(0.0f), -10.0f, glm::vec3(1.0f));
-	plantTurtle->m_renderable.placeCamera(glm::vec3(0.0f, 1.0f, 2.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	plantTurtle->m_renderable.placeCamera(glm::vec3(1.0f, 1.0f, 2.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	if (parser->m_graphicsAPI.find("vulkan") != std::string::npos)
 		plantTurtle->m_renderable.setPerspective(
 			glm::radians(60.0f), parser->m_width / (float)parser->m_height, 0.1f, 100.0f, pje::engine::types::LSysObject::API::Vulkan
@@ -136,7 +131,7 @@ int main(int argc, char* argv[]) {
 	/* Scene preparation - Test specific variables */
 #if defined(QUANTITY_TEST)
 	uint32_t					deltaFrame = 1;
-	std::vector<uint16_t>		renderDurations(PERFORMANCE_TEST_FRAMES);
+	std::vector<size_t>			renderDurations(PERFORMANCE_TEST_FRAMES);
 #elif defined(TIME_TEST)
 	auto						testDuration = std::chrono::seconds(PERFORMANCE_TEST_SECONDS);
 	std::chrono::milliseconds	deltaTime;
@@ -179,17 +174,20 @@ int main(int argc, char* argv[]) {
 
 #if defined(QUANTITY_TEST)
 				plantTurtle->m_renderable.animWindBlow(deltaFrame * 1e-3, 0.5f);
+				plantTurtle->m_renderable.placeCamera(glm::vec3(1.0f, 1.0f, deltaFrame * 1e-3), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+				plantTurtle->m_renderable.updateMVP();
 #elif defined(TIME_TEST)
 				deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startRenderingTime);
 				plantTurtle->m_renderable.animWindBlow(deltaTime.count() * 1e-3, 0.5f);
 #endif
 				/* Updating shader resources */
 				vkRenderer->updateBuffer(plantTurtle->m_renderable, vkRenderer->m_buffStorageBones, pje::renderer::RendererVK::BufferType::StorageBones);
+				vkRenderer->updateBuffer(plantTurtle->m_renderable, vkRenderer->m_buffUniformMVP, pje::renderer::RendererVK::BufferType::UniformMVP);
 
 #if defined(QUANTITY_TEST)
 				auto startFrameTime = std::chrono::steady_clock::now();
 #endif
-				/* Rendering.. */
+				/* Rendering */
 				vkRenderer->renderIn(window, plantTurtle->m_renderable);
 #if defined(TIME_TEST)
 				++amountOfRenderedFrames;
@@ -242,17 +240,20 @@ int main(int argc, char* argv[]) {
 
 #if defined(QUANTITY_TEST)
 				plantTurtle->m_renderable.animWindBlow(deltaFrame * 1e-3, 0.5f);
+				plantTurtle->m_renderable.placeCamera(glm::vec3(1.0f, 1.0f, deltaFrame * 1e-3), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+				plantTurtle->m_renderable.updateMVP();
 #elif defined(TIME_TEST)
 				deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startRenderingTime);
 				plantTurtle->m_renderable.animWindBlow(deltaTime.count() * 1e-3, 0.5f);
 #endif
 				/* Updating shader resources */
 				glRenderer->updateBuffer(plantTurtle->m_renderable, pje::renderer::RendererGL::BufferType::StorageBones);
+				glRenderer->updateBuffer(plantTurtle->m_renderable, pje::renderer::RendererGL::BufferType::UniformMVP);
 
 #if defined(QUANTITY_TEST)
 				auto startFrameTime = std::chrono::steady_clock::now();
 #endif
-				/* Rendering.. */
+				/* Rendering */
 				glRenderer->renderIn(window, plantTurtle->m_renderable);
 #if defined(TIME_TEST)
 				++amountOfRenderedFrames;
@@ -280,7 +281,8 @@ int main(int argc, char* argv[]) {
 		/* Unknown environment */
 		else {
 			std::cout << "[PJE] \tNO GRAPHICS API WERE SELECTED!" << std::endl;
-			glfwTerminate();
+			if (window)
+				glfwTerminate();
 			return -3;
 		}
 	}
@@ -288,18 +290,27 @@ int main(int argc, char* argv[]) {
 		std::cout << "[ERROR] Exception thrown: " << ex.what() << std::endl;
 	}
 	
-	/* Printing performance data | Terminating application */
+	/* Printing performance data */
 #if defined(QUANTITY_TEST)
-	std::cout << "[PJE] \tFrametime: max (" << 
-		*std::max_element(std::begin(renderDurations), std::end(renderDurations)) <<
-		"us) | min (" <<
-		*std::min_element(std::begin(renderDurations), std::end(renderDurations)) <<
-		"us)" <<
+	auto max	= *std::max_element(renderDurations.begin(), renderDurations.end());
+	auto min	= *std::min_element(renderDurations.begin(), renderDurations.end());
+	auto median = getMedian(renderDurations);
+	auto mean	= std::accumulate(renderDurations.begin(), renderDurations.end(), 0.0) / renderDurations.size();
+	auto sd		= getStandardDeviation(renderDurations, mean);
+
+	std::cout << 
+		"[PJE] \tFrametime Results:\n\tmin (" << 
+		min << "us) | max (" << max << "us) | median (" << 
+		median << "us) | mean (" << mean << "us) | standard deviation (" << sd << "us)" <<
 	std::endl;
 #elif defined(TIME_TEST)
 	std::cout << "[PJE] \tFrames rendered: " << amountOfRenderedFrames << std::endl;
 #endif
+
+	/* Terminating application */
 	glfwTerminate();
 	std::cout << "[PJE] \tPerformance test completed!" << std::endl;
+	std::cout << "\nPress ENTER to close this app..";
+	std::cin.get();
 	return 0;
 }

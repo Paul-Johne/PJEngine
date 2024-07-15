@@ -92,13 +92,13 @@ void pje::engine::PlantTurtle::evaluateLSysCommand(const char& command, const st
 		break;
 	case '-':
 		/* Assumption: tilting to left */
-		tiltTurtle(-45.0f);
+		tiltTurtle(45.0f);
 		/* new bone after tilting */
 		m_renderable.m_bones.push_back(createBone());
 		break;
 	case '+':
 		/* Assumption: tilting to right */
-		tiltTurtle(45.0f);
+		tiltTurtle(-45.0f);
 		/* new bone after tilting */
 		m_renderable.m_bones.push_back(createBone());
 		break;
@@ -187,10 +187,14 @@ void pje::engine::PlantTurtle::tiltTurtle(float degrees) {
 	glm::mat4 rotation = glm::mat4(1.0f);
 
 	/* ### R_z(degrees) := I * R_y(-90.0f) * R_x(degrees) * R_y(90.0f) ### */
+
+	// R_z(degrees) //
+	//rotation = glm::rotate(rotation, glm::radians(degrees), glm::vec3(0.0f, 0.0f, 1.0f));
+
+	// I * R_y(-90.0f) * R_x(degrees) * R_y(90.0f) //
 	rotation = glm::rotate(rotation, glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	rotation = glm::rotate(rotation, glm::radians(degrees), glm::vec3(1.0f, 0.0f, 0.0f));
 	rotation = glm::rotate(rotation, glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-	//rotation = glm::rotate(rotation, glm::radians(degrees), glm::vec3(0.0f, 0.0f, 1.0f));
 
 	/* local rotation: m_turtlePosMat * rotation */
 	m_turtlePosMat *= rotation;
