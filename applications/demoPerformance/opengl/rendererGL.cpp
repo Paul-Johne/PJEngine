@@ -104,8 +104,8 @@ void pje::renderer::RendererGL::uploadRenderable(const pje::engine::types::LSysO
 		2, 2, GL_FLOAT, false, sizeof(pje::engine::types::Vertex), (void*)offsetof(pje::engine::types::Vertex, m_uv)
 	);
 	glEnableVertexAttribArray(3);
-	glVertexAttribPointer(
-		3, 2, GL_UNSIGNED_INT, false, sizeof(pje::engine::types::Vertex), (void*)offsetof(pje::engine::types::Vertex, m_boneAttrib)
+	glVertexAttribIPointer(
+		3, 2, GL_UNSIGNED_INT, sizeof(pje::engine::types::Vertex), (void*)offsetof(pje::engine::types::Vertex, m_boneAttrib)
 	);
 
 	/* 5) Unbinding */
@@ -236,7 +236,7 @@ void pje::renderer::RendererGL::bindRenderable(const pje::engine::types::LSysObj
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_buffStorageBoneRefs);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_buffStorageBones);
 
-	/* VAO Binding*/
+	/* VAO Binding */
 	glBindVertexArray(m_handles.buffRenderable.vaoHandle);
 }
 
