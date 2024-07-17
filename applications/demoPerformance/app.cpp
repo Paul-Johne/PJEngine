@@ -8,7 +8,8 @@
 #endif
 
 #if defined(QUANTITY_TEST)
-	#define PERFORMANCE_TEST_FRAMES		20000
+	#define PERFORMANCE_TEST_FRAMES		20000		// value between 0 and 4'294'967'295
+	#define WARMUP_FRAMES				100			// value between 0 and 255
 #elif defined(TIME_TEST)
 	#define PERFORMANCE_TEST_SECONDS	5
 #endif
@@ -130,7 +131,8 @@ int main(int argc, char* argv[]) {
 
 	/* Scene preparation - Test specific variables */
 #if defined(QUANTITY_TEST)
-	uint32_t					deltaFrame = 1;
+	uint32_t					deltaFrame			= 1;
+	uint8_t						warmupFrameCount	= 0;
 	std::vector<size_t>			renderDurations(PERFORMANCE_TEST_FRAMES);
 #elif defined(TIME_TEST)
 	auto						testDuration = std::chrono::seconds(PERFORMANCE_TEST_SECONDS);
@@ -173,9 +175,11 @@ int main(int argc, char* argv[]) {
 			while (!glfwWindowShouldClose(window)) {
 
 #if defined(QUANTITY_TEST)
-				plantTurtle->m_renderable.animWindBlow(deltaFrame * 1e-3, 0.5f);
-				plantTurtle->m_renderable.placeCamera(glm::vec3(1.0f, 1.0f, deltaFrame * 1e-3), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-				plantTurtle->m_renderable.updateMVP();
+				if (warmupFrameCount == WARMUP_FRAMES) {
+					plantTurtle->m_renderable.animWindBlow(deltaFrame * 1e-3, 0.5f);
+					plantTurtle->m_renderable.placeCamera(glm::vec3(1.0f, 1.0f, deltaFrame * 1e-3), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+					plantTurtle->m_renderable.updateMVP();
+				}
 #elif defined(TIME_TEST)
 				deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startRenderingTime);
 				plantTurtle->m_renderable.animWindBlow(deltaTime.count() * 1e-3, 0.5f);
@@ -193,17 +197,21 @@ int main(int argc, char* argv[]) {
 				++amountOfRenderedFrames;
 #endif
 
-				/* Saving performance data | Closing window after condition is met */
+				/* Saving performance data after warmup frames | Closing window after condition is met */
 #if defined(QUANTITY_TEST)
-				renderDurations.at(PERFORMANCE_TEST_FRAMES - deltaFrame) = 
-					std::chrono::duration_cast<std::chrono::microseconds>(
-						std::chrono::steady_clock::now() - startFrameTime
-					).count();
+				if (warmupFrameCount < WARMUP_FRAMES) {
+					++warmupFrameCount;
+				} else {
+					renderDurations.at(PERFORMANCE_TEST_FRAMES - deltaFrame) =
+						std::chrono::duration_cast<std::chrono::microseconds>(
+							std::chrono::steady_clock::now() - startFrameTime
+						).count();
 
-				if (deltaFrame < PERFORMANCE_TEST_FRAMES)
-					++deltaFrame;
-				else
-					glfwSetWindowShouldClose(window, GLFW_TRUE);
+					if (deltaFrame < PERFORMANCE_TEST_FRAMES)
+						++deltaFrame;
+					else
+						glfwSetWindowShouldClose(window, GLFW_TRUE);
+				}
 #elif defined(TIME_TEST)
 				if (deltaTime >= testDuration)
 					glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -239,9 +247,11 @@ int main(int argc, char* argv[]) {
 			while (!glfwWindowShouldClose(window)) {
 
 #if defined(QUANTITY_TEST)
-				plantTurtle->m_renderable.animWindBlow(deltaFrame * 1e-3, 0.5f);
-				plantTurtle->m_renderable.placeCamera(glm::vec3(1.0f, 1.0f, deltaFrame * 1e-3), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-				plantTurtle->m_renderable.updateMVP();
+				if (warmupFrameCount == WARMUP_FRAMES) {
+					plantTurtle->m_renderable.animWindBlow(deltaFrame * 1e-3, 0.5f);
+					plantTurtle->m_renderable.placeCamera(glm::vec3(1.0f, 1.0f, deltaFrame * 1e-3), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+					plantTurtle->m_renderable.updateMVP();
+				}
 #elif defined(TIME_TEST)
 				deltaTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - startRenderingTime);
 				plantTurtle->m_renderable.animWindBlow(deltaTime.count() * 1e-3, 0.5f);
@@ -259,17 +269,21 @@ int main(int argc, char* argv[]) {
 				++amountOfRenderedFrames;
 #endif
 
-				/* Saving performance data | Closing window after condition is met */
+				/* Saving performance data after warmup frames | Closing window after condition is met */
 #if defined(QUANTITY_TEST)
-				renderDurations.at(PERFORMANCE_TEST_FRAMES - deltaFrame) =
-					std::chrono::duration_cast<std::chrono::microseconds>(
-						std::chrono::steady_clock::now() - startFrameTime
-					).count();
+				if (warmupFrameCount < WARMUP_FRAMES) {
+					++warmupFrameCount;
+				} else {
+					renderDurations.at(PERFORMANCE_TEST_FRAMES - deltaFrame) =
+						std::chrono::duration_cast<std::chrono::microseconds>(
+							std::chrono::steady_clock::now() - startFrameTime
+						).count();
 
-				if (deltaFrame < PERFORMANCE_TEST_FRAMES)
-					++deltaFrame;
-				else
-					glfwSetWindowShouldClose(window, GLFW_TRUE);
+					if (deltaFrame < PERFORMANCE_TEST_FRAMES)
+						++deltaFrame;
+					else
+						glfwSetWindowShouldClose(window, GLFW_TRUE);
+				}
 #elif defined(TIME_TEST)
 				if (deltaTime >= testDuration)
 					glfwSetWindowShouldClose(window, GLFW_TRUE);
