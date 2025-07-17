@@ -1,0 +1,7 @@
+# automatically created by Visual Studio
+.vs/
+out/
+CMakeSettings.json
+
+# fbm folder that may be created when opening fbx file in Visual Studio
+*.fbm
